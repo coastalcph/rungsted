@@ -28,6 +28,8 @@ from distutils.command.build_clib import build_clib
 
 extra_compile_args=['-Wno-deprecated', '-Wno-unused-function', '-Wno-#warnings', '-Wno-deprecated-writable-strings']
 
+#                               extra_compile_args=['-w -ffast-math -O3 -fopenmp'],
+#                               extra_link_args=['-fopenmp'])]
 
 setup(
   name='Structured perceptron',
@@ -38,13 +40,13 @@ setup(
 
   # ext_modules=cythonize("rungsted/*.pyx", sources=['rungsted/MurmurHash3.cpp'])
   ext_modules=[
-      Extension('rungsted.struct_perceptron', sources=['rungsted/struct_perceptron.pyx'],
-                extra_compile_args=extra_compile_args, language='c++',),
-      Extension('rungsted.input', sources=['rungsted/input.pyx',
-                                  'rungsted/MurmurHash3.cpp'],
+      Extension('struct_perceptron', sources=['struct_perceptron.pyx'],
                 extra_compile_args=extra_compile_args, language='c++'),
-      Extension('rungsted.hashing', sources=['rungsted/hashing.pyx',
-                                    'rungsted/MurmurHash3.cpp'],
+      Extension('input', sources=['input.pyx',
+                                  'MurmurHash3.cpp'],
+                extra_compile_args=extra_compile_args, language='c++'),
+      Extension('hashing', sources=['hashing.pyx',
+                                    'MurmurHash3.cpp'],
                 extra_compile_args=extra_compile_args, language='c++')
   ],
   include_dirs = [np.get_include()]

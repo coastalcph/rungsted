@@ -8,8 +8,8 @@ import cython
 import numpy as np
 cimport numpy as cnp
 
-from input cimport Example, Dataset, DataBlock
-from hashing cimport hash_ints
+from .input cimport Example, Dataset, DataBlock
+from .hashing cimport hash_ints
 
 cdef extern from "math.h":
     float INFINITY
@@ -73,8 +73,9 @@ cdef class Weights:
 
 
 def update_weights(int[:] pred_seq, int[:] gold_seq, list sent, Weights w, int n_updates, double alpha, int n_labels):
-    cdef int word_i
+    cdef int word_i, i
     cdef Example cur
+    cdef int pred_label, gold_label
     # Update emission features
 
     for word_i in range(len(pred_seq)):
@@ -92,15 +93,15 @@ def update_weights(int[:] pred_seq, int[:] gold_seq, list sent, Weights w, int n
 
             # Transition from from initial state
             if word_i == 0:
-                w.update_t(n_labels, gold_label, alpha, n_updates)
-                w.update_t(n_labels, pred_label, -alpha, n_updates)
+                w.update_t(n_labels, gold_label - 1, alpha, n_updates)
+                w.update_t(n_labels, pred_label - 1, -alpha, n_updates)
 
     # Transition features
     for word_i in range(1, len(pred_seq)):
         # If current or previous prediction is not correct
         if gold_seq[word_i] != pred_seq[word_i] or gold_seq[word_i-1] != pred_seq[word_i-1]:
-            w.update_t(gold_seq[word_i], gold_seq[word_i-1], alpha, n_updates)
-            w.update_t(pred_seq[word_i], pred_seq[word_i-1], -alpha, n_updates)
+            w.update_t(gold_seq[word_i] - 1, gold_seq[word_i-1] - 1, alpha, n_updates)
+            w.update_t(pred_seq[word_i] - 1, pred_seq[word_i-1] - 1, -alpha, n_updates)
 
 
 @cython.wraparound(True)
@@ -117,7 +118,7 @@ def viterbi(list sent, int n_labels, Weights w):
     for word_i in reversed(range(1, len(path))):
         best_seq.append(path[word_i, best_seq[-1]])
 
-    return list(reversed(best_seq))
+    return [label + 1 for label in reversed(best_seq)]
 
 
 cdef viterbi_path(list seq, int n_labels, Weights w, double[:, ::1] trellis, int[:, ::1] path):
@@ -127,6 +128,8 @@ cdef viterbi_path(list seq, int n_labels, Weights w, double[:, ::1] trellis, int
         int min_prev
         double e_score
 
+        # Zero-based labels
+        int cur_label_0, prev_label_0
         int  feat_i, i, j
         int word_i = 0
         double feat_val
@@ -135,8 +138,8 @@ cdef viterbi_path(list seq, int n_labels, Weights w, double[:, ::1] trellis, int
     for word_i in range(len(seq)):
         cur = seq[word_i]
         # Current label
-        for label_i in range(n_labels):
-            if trellis[word_i, label_i] == -INFINITY:
+        for cur_label_0 in range(n_labels):
+            if trellis[word_i, cur_label_0] == -INFINITY:
                 continue
 
             min_score = -1E9
@@ -145,20 +148,20 @@ cdef viterbi_path(list seq, int n_labels, Weights w, double[:, ::1] trellis, int
             # Emission score
 
             for i in range(cur.index.shape[0]):
-                feat_i = hash_ints(cur.index[i], label_i, w.hash_bits)
+                feat_i = hash_ints(cur.index[i], cur_label_0 + 1, w.hash_bits)
                 e_score += w.e[feat_i] * cur.val[i]
 
             # Previous label
             if word_i == 0:
-                trellis[word_i, label_i] = e_score + w.t[n_labels, label_i]
-                path[word_i, label_i] = label_i
+                trellis[word_i, cur_label_0] = e_score + w.t[n_labels, cur_label_0]
+                path[word_i, cur_label_0] = cur_label_0
 
             else:
-                for label_j in range(n_labels):
-                    score = e_score + w.t[label_i, label_j] + trellis[word_i-1, label_j]
+                for prev_label_0 in range(n_labels):
+                    score = e_score + w.t[cur_label_0, prev_label_0] + trellis[word_i-1, prev_label_0]
 
                     if score >= min_score:
                         min_score = score
-                        min_prev = label_j
-                trellis[word_i, label_i] = min_score
-                path[word_i, label_i] = min_prev
+                        min_prev = prev_label_0
+                trellis[word_i, cur_label_0] = min_score
+                path[word_i, cur_label_0] = min_prev

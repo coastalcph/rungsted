@@ -13,6 +13,7 @@ from cpython cimport array
 cimport cython
 import sys
 
+import hashing
 from hashing cimport hash_feat
 
 cnp.import_array()
@@ -29,6 +30,7 @@ cdef extern from "string.h":
     char * strchr ( char *, int )
     char * strtok(char *, char *)
     char * strsep(char **, char *)
+    char * strdup(const char *)
     char * strcpy(char *, char *)
     char * strncpy(char *, char *, size_t)
     int strlen(char *)
@@ -148,11 +150,11 @@ cdef class Example(object):
 
 
     def __dealloc__(self):
-        PyMem_Free(self.id)
+        if self.id_: free(self.id_)
 
     def __repr__(self):
         return "<Example id={} with " \
-               "{} features.>".format(self.id, self.length)
+               "{} features.>".format(self.id_, self.length)
 
 
 cdef int parse_header(char* header, Example e) except -1:
@@ -169,7 +171,7 @@ cdef int parse_header(char* header, Example e) except -1:
                 pass
                 #constraints.append(label)
         elif first_char == '\'':
-            tag = &header_elem[1]
+            e.id_ = strdup(&header_elem[1])
         elif isdigit(first_char):
             # Tokens starting with a digit can be either
             #  - a label with optional cost, e.g. 3 and 3:0.4

@@ -10,9 +10,7 @@ from struct_perceptron import Weights, viterbi, update_weights
 
 logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
 
-parser = argparse.ArgumentParser(description="""Discriminatory tagger using structured perceptron.
-Supports cost-sensitive learning where it is allowed to have multiple gold labels per token.
-""")
+parser = argparse.ArgumentParser(description="""Structured perceptron tagger""")
 parser.add_argument('--train', help="Training data (vw format)")
 parser.add_argument('--test', help="Test data (vw format)")
 parser.add_argument('--hash-bits', '-b', help="Size of feature vector in bits (2**b)", type=int, default=20)

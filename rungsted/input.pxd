@@ -24,7 +24,7 @@ cdef class DataBlock(object):
 
 cdef class Example(object):
     cdef:
-        char *id
+        char * id_
         DataBlock block
         public int[:] index
         public double[:] val
