@@ -1,0 +1,6 @@
+*.c
+*.cpp
+*.so
+*.html
+loc_*
+!MurmurHash.cpp
