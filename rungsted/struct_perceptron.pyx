@@ -7,9 +7,9 @@ from libc.stdint cimport uint32_t, int32_t, int64_t, uint64_t
 import cython
 import numpy as np
 cimport numpy as cnp
+from feat_map cimport HashingFeatMap, FeatMap
 
 from .input cimport Example, Dataset, DataBlock
-from .hashing cimport hash_ints
 
 cdef extern from "math.h":
     float INFINITY
@@ -25,9 +25,7 @@ cdef class Weights:
     cpdef public double [::1] e_acc
     cpdef public int [::1] e_last_update
 
-    cpdef public int hash_bits
-
-    def __init__(self, n_labels, n_e_feats, hash_bits):
+    def __init__(self, n_labels, n_e_feats):
         self.t = np.zeros((n_labels+1, n_labels), dtype=np.float64)
         self.t_acc = np.zeros_like(self.t, dtype=np.float64)
         self.t_last_update = np.zeros_like(self.t, dtype=np.int32)
@@ -35,8 +33,6 @@ cdef class Weights:
         self.e = np.zeros(n_e_feats, dtype=np.float64)
         self.e_acc = np.zeros_like(self.e, dtype=np.float64)
         self.e_last_update = np.zeros_like(self.e, dtype=np.int32)
-
-        self.hash_bits = hash_bits
 
     def average_weights(self, n_updates):
         e = np.asarray(self.e)
@@ -72,7 +68,8 @@ cdef class Weights:
             self.t[label_i, label_j] += val
 
 
-def update_weights(int[:] pred_seq, int[:] gold_seq, list sent, Weights w, int n_updates, double alpha, int n_labels):
+def update_weights(int[:] pred_seq, int[:] gold_seq, list sent, Weights w, int n_updates, double alpha, int n_labels,
+                   FeatMap feat_map):
     cdef int word_i, i
     cdef Example cur
     cdef int pred_label, gold_label
@@ -86,9 +83,9 @@ def update_weights(int[:] pred_seq, int[:] gold_seq, list sent, Weights w, int n
         # Update if prediction is not correct
         if gold_label != pred_label:
             for i in range(cur.index.shape[0]):
-                w.update_e(hash_ints(cur.index[i], gold_label, w.hash_bits),
+                w.update_e(feat_map.feat_i_for_label(cur.index[i], gold_label),
                            cur.val[i] * alpha, n_updates)
-                w.update_e(hash_ints(cur.index[i], pred_label, w.hash_bits),
+                w.update_e(feat_map.feat_i_for_label(cur.index[i], pred_label),
                            -cur.val[i] * alpha, n_updates)
 
             # Transition from from initial state
@@ -105,14 +102,14 @@ def update_weights(int[:] pred_seq, int[:] gold_seq, list sent, Weights w, int n
 
 
 @cython.wraparound(True)
-def viterbi(list sent, int n_labels, Weights w):
+def viterbi(list sent, int n_labels, Weights w, FeatMap feat_map):
     """Returns best predicted sequence"""
     # Allocate trellis and back pointers
     path = np.zeros((len(sent), n_labels), dtype=np.int32)*-1
     # trellis = sent.allowed_label_matrix(n_labels)
     trellis = np.zeros_like(path, dtype=np.float64)
 
-    viterbi_path(sent, n_labels, w, trellis, path)
+    viterbi_path(sent, n_labels, w, trellis, path, feat_map)
 
     best_seq = [trellis[-1].argmax()]
     for word_i in reversed(range(1, len(path))):
@@ -121,7 +118,7 @@ def viterbi(list sent, int n_labels, Weights w):
     return [label + 1 for label in reversed(best_seq)]
 
 
-cdef viterbi_path(list seq, int n_labels, Weights w, double[:, ::1] trellis, int[:, ::1] path):
+cdef viterbi_path(list seq, int n_labels, Weights w, double[:, ::1] trellis, int[:, ::1] path, FeatMap feat_map):
     cdef:
         double min_score
         double score
@@ -148,7 +145,7 @@ cdef viterbi_path(list seq, int n_labels, Weights w, double[:, ::1] trellis, int
             # Emission score
 
             for i in range(cur.index.shape[0]):
-                feat_i = hash_ints(cur.index[i], cur_label_0 + 1, w.hash_bits)
+                feat_i = feat_map.feat_i_for_label(cur.index[i], cur_label_0 + 1)
                 e_score += w.e[feat_i] * cur.val[i]
 
             # Previous label

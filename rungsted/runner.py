@@ -4,6 +4,7 @@ import logging
 import random
 import numpy as np
 import sys
+from feat_map import HashingFeatMap, DictFeatMap
 
 from input import read_vw_seq
 from struct_perceptron import Weights, viterbi, update_weights
@@ -13,7 +14,7 @@ logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=lo
 parser = argparse.ArgumentParser(description="""Structured perceptron tagger""")
 parser.add_argument('--train', help="Training data (vw format)")
 parser.add_argument('--test', help="Test data (vw format)")
-parser.add_argument('--hash-bits', '-b', help="Size of feature vector in bits (2**b)", type=int, default=20)
+parser.add_argument('--hash-bits', '-b', help="Size of feature vector in bits (2**b)", type=int)
 parser.add_argument('--n-labels', '-k', help="Number of different labels", required=True, type=int)
 parser.add_argument('--passes', help="Number of passes over the training set", type=int, default=5)
 parser.add_argument('--predictions', '-p', help="File for outputting predictions")
@@ -31,14 +32,20 @@ args = parser.parse_args()
 logging.info("Tagger started. \nCalled with {}".format(args))
 n_labels = args.n_labels
 
-train = read_vw_seq(args.train, args.n_labels, ignore=args.ignore)
+if args.hash_bits:
+    feat_map = HashingFeatMap(args.hash_bits)
+else:
+    feat_map = DictFeatMap(args.n_labels)
+
+train = read_vw_seq(args.train, args.n_labels, ignore=args.ignore, feat_map=feat_map)
 logging.info("Training data {} sentences".format(len(train)))
-test = read_vw_seq(args.test, args.n_labels, ignore=args.ignore)
+# Prevents the addition of new features when loading the test set
+feat_map.freeze()
+test = read_vw_seq(args.test, args.n_labels, ignore=args.ignore, feat_map=feat_map)
 logging.info("Test data {} sentences".format(len(test)))
 
-n_feats = 2**args.hash_bits
-
-w = Weights(n_labels, n_feats, args.hash_bits)
+w = Weights(n_labels, feat_map.n_feats())
+logging.info("Weight vector size {}".format(feat_map.n_feats()))
 
 n_updates = 0
 
@@ -54,11 +61,11 @@ for epoch in range(1, args.passes+1):
         # print flattened_labels, list(sent.cost)
 
         gold_seq = np.array(flattened_labels, dtype=np.int32)
-        pred_seq = np.array(viterbi(sent, n_labels, w), dtype=np.int32)
+        pred_seq = np.array(viterbi(sent, n_labels, w, feat_map), dtype=np.int32)
 
         assert len(gold_seq) == len(pred_seq)
 
-        update_weights(pred_seq, gold_seq, sent, w, n_updates, learning_rate, n_labels)
+        update_weights(pred_seq, gold_seq, sent, w, n_updates, learning_rate, n_labels, feat_map)
 
         n_updates += 1
 
@@ -76,7 +83,7 @@ if args.average:
     w.average_weights(n_updates)
 
 for sent in test:
-    y_pred_sent = viterbi(sent, n_labels, w)
+    y_pred_sent = viterbi(sent, n_labels, w, feat_map)
     y_gold += [e.flat_label() for e in sent]
     y_pred += y_pred_sent
 

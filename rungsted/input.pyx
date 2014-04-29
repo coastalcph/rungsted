@@ -1,3 +1,7 @@
+#cython: boundscheck=False
+#cython: nonecheck=False
+#cython: wraparound=False
+
 from libc.stdio cimport FILE, sscanf
 from libc.stdint cimport uint32_t, int64_t
 from libc.stdlib cimport malloc, free
@@ -12,9 +16,8 @@ from cpython cimport array
 
 cimport cython
 import sys
+from feat_map cimport FeatMap
 
-import hashing
-from hashing cimport hash_feat
 
 cnp.import_array()
 
@@ -47,7 +50,6 @@ cdef extern from "ctype.h":
 DEF MAX_LEN = 2048
 DEF MAX_FEAT_NAME_LEN = 1024
 cdef char* DEFAULT_NS = ""
-DEF HASH_BITS = 18
 DEF BLOCK_SIZE = 50*1000
 # DEF BLOCK_SIZE = 50
 
@@ -102,7 +104,7 @@ cdef inline int add_feature(Example e, int index, double val) except -1:
     return 0
 
 cdef class Dataset(object):
-    def __init__(self, n_labels, hash_bits=18, quadratic=[], ignore=[]):
+    def __init__(self, n_labels, quadratic=[], ignore=[]):
         for combo in quadratic:
             if not isinstance(combo, str) or len(combo) != 2:
                 raise StandardError("Invalid quadratic combination: {}".format(combo))
@@ -116,7 +118,6 @@ cdef class Dataset(object):
         self.ignore = ignore_str
         self.nnz = 0
         self.n_labels = n_labels
-        self.hash_bits = hash_bits
 
 
 cdef class Example(object):
@@ -228,9 +229,9 @@ cdef double separate_and_parse_val(char* string_with_value) except -1:
 
 
 cdef int quadratic_combinations(char* quadratic, Example e, int[] ns_begin, char[] ns, int n_features,
-                                char** feature_begin) except -1:
+                                char** feature_begin, FeatMap feat_map) except -1:
     cdef:
-        int arg_i
+        int arg_i, feat_i = -1
         char arg1, arg2
         int arg1_begin, arg2_begin
         int arg1_i, arg2_i
@@ -273,23 +274,26 @@ cdef int quadratic_combinations(char* quadratic, Example e, int[] ns_begin, char
                          ns[arg1_i], feature_begin[arg1_i],
                          ns[arg2_i], feature_begin[arg2_i])
 
-
-                add_feature(e,
-                            hash_feat(combined_name, HASH_BITS),
-                            e.val[arg1_i] * e.val[arg2_i])
-                n_combos += 1
+                feat_i = feat_map.feat_i(combined_name)
+                if feat_i >= 0:
+                    add_feature(e,
+                                feat_i,
+                                e.val[arg1_i] * e.val[arg2_i])
+                    n_combos += 1
 
     return n_combos
 
 
 
-cdef parse_features(char* feature_str, Example e, char* quadratic):
+cdef parse_features(char* feature_str, Example e, char* quadratic, FeatMap feat_map):
     cdef:
         char ns[MAX_LEN]
         char * feature_begin[MAX_LEN]
 
         # Indexes of the beginning of the namespace
         int ns_begin[255] # Maximum value of char
+
+        int feat_i = -1
 
         int n_features = 0
         double cur_ns_mult = 1.0
@@ -323,22 +327,25 @@ cdef parse_features(char* feature_str, Example e, char* quadratic):
                 raise StandardError("Number of features on line exceeds maximum allowed (defined by MAX_LEN)")
 
             snprintf(ns_and_feature_name, MAX_FEAT_NAME_LEN, "%s^%s", cur_ns, feat_and_val)
-            add_feature(e,
-                        hash_feat(ns_and_feature_name, HASH_BITS),
-                        cur_ns_mult * separate_and_parse_val(feat_and_val))
+            feat_i = feat_map.feat_i(ns_and_feature_name)
 
-            feature_begin[n_features] = feat_and_val
-            ns[n_features] = cur_ns_first
-            n_features += 1
+            if feat_i >= 0:
+                add_feature(e,
+                            feat_i,
+                            cur_ns_mult * separate_and_parse_val(feat_and_val))
+
+                feature_begin[n_features] = feat_and_val
+                ns[n_features] = cur_ns_first
+                n_features += 1
 
         feat_and_val = strsep(&feature_str, " ")
 
-    n_features += quadratic_combinations(quadratic, e, ns_begin, ns, n_features, feature_begin)
+    n_features += quadratic_combinations(quadratic, e, ns_begin, ns, n_features, feature_begin, feat_map)
 
     return n_features
 
 
-def read_vw_seq(filename, n_labels, quadratic=[], ignore=[]):
+def read_vw_seq(filename, n_labels, FeatMap feat_map, quadratic=[], ignore=[]):
     cdef:
         char* fname
         FILE* cfile
@@ -384,7 +391,12 @@ def read_vw_seq(filename, n_labels, quadratic=[], ignore=[]):
             parse_header(header, e)
             free(header)
 
-            features_parsed = parse_features(bar_pos, e, dataset.quadratic)
+            features_parsed = parse_features(bar_pos, e, dataset.quadratic, feat_map)
+
+            # Add constant feature
+            add_feature(e, feat_map.feat_i("^Constant"), 1)
+            features_parsed += 1
+
             e.length = features_parsed
             e.init_views()
 

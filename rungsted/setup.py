@@ -5,47 +5,21 @@ import numpy as np
 from distutils.command.build_clib import build_clib
 
 
-
-# ext_modules = [Extension('murmurhash', sources=['rungsted/MurmurHash3.cpp',
-#                                                 'rungsted/MurmurHash3.h'], language='c++')]
-# ext_modules += cythonize(["rungsted/*.pyx"],
-#                          language='c++',
-#                          define_macros=[("NPY_NO_DEPRECATED_API", None)],
-#                          )
-
-
-
-# define_macros=[("NPY_NO_DEPRECATED_API", None)]
-
-# setup(
-#     cmdclass={'build_ext': build_ext},
-#     ext_modules=[Extension("cython_test", sources=["cython_test.pyx", "c_test.cc"])]
-# )
-
 # TODO Change the setup to be more like the one described here, which handles dependencies between modules better
 # https://github.com/cython/cython/wiki/enhancements-distutils_preprocessing
 
 
 extra_compile_args=['-Wno-deprecated', '-Wno-unused-function', '-Wno-#warnings', '-Wno-deprecated-writable-strings']
 
-#                               extra_compile_args=['-w -ffast-math -O3 -fopenmp'],
-#                               extra_link_args=['-fopenmp'])]
-
 setup(
   name='Structured perceptron',
   cmdclass={'build_ext': build_ext, 'build_clib': build_clib},
-  # libraries=[('MurmurHash3', {'sources': ['rungsted/MurmurHash3.cpp'],
-  #                             'language': 'c++',
-  #                             })],
-
-  # ext_modules=cythonize("rungsted/*.pyx", sources=['rungsted/MurmurHash3.cpp'])
   ext_modules=[
       Extension('struct_perceptron', sources=['struct_perceptron.pyx'],
                 extra_compile_args=extra_compile_args, language='c++'),
-      Extension('input', sources=['input.pyx',
-                                  'MurmurHash3.cpp'],
+      Extension('input', sources=['input.pyx'],
                 extra_compile_args=extra_compile_args, language='c++'),
-      Extension('hashing', sources=['hashing.pyx',
+      Extension('feat_map', sources=['feat_map.pyx',
                                     'MurmurHash3.cpp'],
                 extra_compile_args=extra_compile_args, language='c++')
   ],

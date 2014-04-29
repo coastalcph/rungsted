@@ -3,7 +3,6 @@ cdef class Dataset(object):
         char *quadratic
         char *ignore
         int nnz
-        int hash_bits
         int n_labels
 
 
