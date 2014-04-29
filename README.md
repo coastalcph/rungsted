@@ -6,7 +6,7 @@ Use
 
 ``python setup.py build_ext --inplace``
 
-Building with the above command happens *in place*, leaving the generated C and C++ files in the source directory for inspection. Changes in dependent modules are unfortunately not picked up by the build system. Whenever you need to start from a clean slate, use the supplied `clean.sh` script, which cleans out the generated files. 
+Building with the above command happens *in place*, leaving the generated C and C++ files in the source directory for inspection. Changes in dependent modules are unfortunately not picked up by the build system. Whenever you need to start from a clean slate, use the supplied `clean.sh` script to get rid of the generated files. 
 
 ### Demo
 
