@@ -12,7 +12,7 @@ Building with the above command happens *in place*, leaving the generated C and 
 
 The repository contains a subset of the part-of-speech tagged Brown corpus. To run the structured perceptron labeler on this dataset, use:
 
-``python src/runner.sh --train data/brown.train --test data/brown.test.vw -k 39``
+``python src/runner.py --train data/brown.train --test data/brown.test.vw -k 39``
 
 Labels must be integers in the range 1..k. The *k* parameter is thus the number of distinct labels in the input data.
 
