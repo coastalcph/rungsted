@@ -81,6 +81,15 @@ cdef class HashingFeatMap(FeatMap):
 
 
 cdef class DictFeatMap(FeatMap):
+    property feat2index_:
+
+        def __get__(self):
+            return self.feat2index
+
+        def __set__(self, value):
+            self.feat2index = value
+
+
     def __init__(self, int n_labels):
         self.next_i = 0
         self.n_labels = n_labels
