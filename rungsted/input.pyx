@@ -43,6 +43,7 @@ cdef extern from "string.h":
     int asprintf(char **, char *, ...)
     size_t strlcpy(char *, const char *, size_t)
     char * strndup(const char *, size_t)
+    int isspace(int c)
 
 cdef extern from "ctype.h":
     int isdigit(int)
@@ -162,7 +163,7 @@ cdef int parse_header(char* header, Example e) except -1:
     cdef:
         int label
         char* header_elem = strsep(&header, " ")
-        double cost, importance
+        double cost
 
     while header_elem != NULL:
         first_char = header_elem[0]
@@ -200,7 +201,7 @@ cdef int parse_header(char* header, Example e) except -1:
                     else:
                         raise StandardError("Invalid label: {}".format(label))
                 else:
-                    raise StandardError("Invalid importance weight: {}".format(header_elem))
+                    raise StandardError("Invalid label specification: {}".format(header_elem))
 
         header_elem = strsep(&header, " ")
 
@@ -284,8 +285,7 @@ cdef int quadratic_combinations(char* quadratic, Example e, int[] ns_begin, char
     return n_combos
 
 
-
-cdef parse_features(char* feature_str, Example e, char* quadratic, FeatMap feat_map):
+cdef int parse_features(char* feature_str, Example e, char* quadratic, FeatMap feat_map) except -1:
     cdef:
         char ns[MAX_LEN]
         char * feature_begin[MAX_LEN]
@@ -297,6 +297,7 @@ cdef parse_features(char* feature_str, Example e, char* quadratic, FeatMap feat_
 
         int n_features = 0
         double cur_ns_mult = 1.0
+        double cur_val = 1.0
 
         char * cur_ns = DEFAULT_NS
         char cur_ns_first = 0
@@ -307,6 +308,7 @@ cdef parse_features(char* feature_str, Example e, char* quadratic, FeatMap feat_
     # Initialize with -1, a value indicating the namespace is not present
     # in the current example
     for i in range(256): ns_begin[i] = -1
+
 
     feat_and_val = strsep(&feature_str, " ")
     while feat_and_val != NULL:
@@ -326,17 +328,21 @@ cdef parse_features(char* feature_str, Example e, char* quadratic, FeatMap feat_
             if n_features == MAX_LEN:
                 raise StandardError("Number of features on line exceeds maximum allowed (defined by MAX_LEN)")
 
-            snprintf(ns_and_feature_name, MAX_FEAT_NAME_LEN, "%s^%s", cur_ns, feat_and_val)
-            feat_i = feat_map.feat_i(ns_and_feature_name)
+            # Trim space
+            while isspace(feat_and_val[0]):
+                feat_and_val += 1
 
-            if feat_i >= 0:
-                add_feature(e,
-                            feat_i,
-                            cur_ns_mult * separate_and_parse_val(feat_and_val))
+            if feat_and_val[0] != "\0":
+                cur_val = separate_and_parse_val(feat_and_val) * cur_ns_mult
+                snprintf(ns_and_feature_name, MAX_FEAT_NAME_LEN, "%s^%s", cur_ns, feat_and_val)
+                feat_i = feat_map.feat_i(ns_and_feature_name)
 
-                feature_begin[n_features] = feat_and_val
-                ns[n_features] = cur_ns_first
-                n_features += 1
+                if feat_i >= 0:
+                    add_feature(e, feat_i, cur_val)
+
+                    feature_begin[n_features] = feat_and_val
+                    ns[n_features] = cur_ns_first
+                    n_features += 1
 
         feat_and_val = strsep(&feature_str, " ")
 
@@ -378,8 +384,12 @@ def read_vw_seq(filename, n_labels, FeatMap feat_map, quadratic=[], ignore=[]):
                 seqs.append(seq)
             break
 
+        # Replace newline
+        if line[read-1] == '\n':
+            line[read-1] = '\0'
+
         # m = header_re.match(line)
-        if len(line) > 1:
+        if len(line) >= 1:
             e.block.start_example()
             e = Example(e.block, e.block.example_start)
 
@@ -406,5 +416,7 @@ def read_vw_seq(filename, n_labels, FeatMap feat_map, quadratic=[], ignore=[]):
             if len(seq) > 0:
                 seqs.append(seq)
                 seq = []
+
+    free(line)
 
     return seqs
