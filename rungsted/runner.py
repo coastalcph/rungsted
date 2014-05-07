@@ -51,9 +51,11 @@ if args.train:
 
 # Prevents the addition of new features when loading the test set
 feat_map.freeze()
-test = read_vw_seq(args.test, args.n_labels, ignore=args.ignore, feat_map=feat_map)
-logging.info("Test data {} sentences".format(len(test)))
-logging.info("Weight vector size {}".format(feat_map.n_feats()))
+test = None
+if args.test:
+    test = read_vw_seq(args.test, args.n_labels, ignore=args.ignore, feat_map=feat_map)
+    logging.info("Test data {} sentences".format(len(test)))
+    logging.info("Weight vector size {}".format(feat_map.n_feats()))
 
 # Loading weights
 w = Weights(n_labels, feat_map.n_feats())
