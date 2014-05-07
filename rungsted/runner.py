@@ -90,29 +90,38 @@ if args.train:
             w.average_weights(n_updates)
 
 # Testing
-y_gold = []
-y_pred = []
+if args.test:
+    y_gold = []
+    y_pred = []
 
-out = None
-if args.predictions:
-    out = open(args.predictions, 'w')
+    out = None
+    if args.predictions:
+        out = open(args.predictions, 'w')
 
-for sent in test:
-    y_pred_sent = viterbi(sent, n_labels, w, feat_map)
-    y_gold += [e.flat_label() for e in sent]
-    y_pred += y_pred_sent
+    for sent in test:
+        y_pred_sent = viterbi(sent, n_labels, w, feat_map)
+        y_gold_sent = [e.flat_label() for e in sent]
 
-if out:
-    out.close()
+        if out:
+            for example, pred in zip(sent, y_pred_sent):
+                print >>out, "{}\t{}\t{}".format(example.id_, example.flat_label(), pred)
 
-assert len(y_gold) == len(y_pred)
+            print >>out, ""
 
-correct = np.array(y_gold) == np.array(y_pred)
+        y_gold += y_gold_sent
+        y_pred += y_pred_sent
 
-accuracy = correct.sum() / float(len(correct))
+    if out:
+        out.close()
 
-print >>sys.stderr, ''
-logging.info("Accuracy: {:.3f}".format(accuracy))
+    assert len(y_gold) == len(y_pred)
+
+    correct = np.array(y_gold) == np.array(y_pred)
+
+    accuracy = correct.sum() / float(len(correct))
+
+    print >>sys.stderr, ''
+    logging.info("Accuracy: {:.3f}".format(accuracy))
 
 # Save model
 if args.final_model:

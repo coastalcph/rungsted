@@ -16,7 +16,7 @@ ctypedef s_feature Feature
 
 cdef class Example(object):
     cdef:
-        char * id_
+        public char * id_
         Dataset dataset
         double importance
         public double[:] cost
