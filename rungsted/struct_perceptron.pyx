@@ -50,7 +50,7 @@ cdef class Weights:
         t = t_acc / n_updates
         self.t = t
 
-    def update_e(Weights self, int feat_i, double val, int n_updates):
+    cpdef update_e(Weights self, int feat_i, double val, int n_updates):
         cdef int missed_updates = n_updates - self.e_last_update[feat_i] - 1
         with nogil:
             self.e_last_update[feat_i] = n_updates
@@ -59,7 +59,7 @@ cdef class Weights:
             self.e[feat_i] += val
 
 
-    def update_t(Weights self, int label_i, int label_j, double val, int n_updates):
+    cpdef update_t(Weights self, int label_i, int label_j, double val, int n_updates):
         cdef int missed_updates = n_updates - self.t_last_update[label_i, label_j] - 1
         with nogil:
             self.t_last_update[label_i, label_j] = n_updates
