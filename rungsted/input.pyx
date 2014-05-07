@@ -5,6 +5,7 @@
 from libc.stdio cimport FILE, sscanf
 from libc.stdint cimport uint32_t, int64_t
 from libc.stdlib cimport malloc, free
+from libcpp.vector cimport vector
 
 import numpy as np
 cimport numpy as cnp
@@ -51,58 +52,7 @@ cdef extern from "ctype.h":
 DEF MAX_LEN = 2048
 DEF MAX_FEAT_NAME_LEN = 1024
 cdef char* DEFAULT_NS = ""
-DEF BLOCK_SIZE = 50*1000
-# DEF BLOCK_SIZE = 50
 
-cdef class DataBlock(object):
-    def __cinit__(self, int size, int n_labels):
-
-        self.size = size
-        # Initializing the arrays with array.clone(...) is fast and avoids memory copy.
-        # However, it raises a deprecated error, which is currently ignored in the build
-        # by the -Wno-deprecated-writable-strings flag
-        self.index = array.clone(array.array("i"), size, False)
-        self.val = array.clone(array.array("d"), size, False)
-        self.next_i = 0
-        self.example_start = 0
-        self.n_labels = n_labels
-
-    cdef void start_example(self):
-        self.example_start = self.next_i
-
-    cdef DataBlock copy_rest_to_new(self):
-        cdef DataBlock new_block = DataBlock(self.size, self.n_labels)
-        cdef int old_i, new_i, old_size, j
-
-        # Check if remaining data fits in new DataBlock
-        old_size = self.next_i - self.example_start
-        assert old_size <= self.size
-
-        for old_i in range(self.example_start, self.next_i):
-            new_i = old_i - self.example_start
-            new_block.index[new_i] = self.index[old_i]
-            new_block.val[new_i] = self.val[old_i]
-
-        new_block.example_start = 0
-        new_block.next_i = self.next_i - self.example_start
-        new_block.is_full = new_block.next_i == new_block.size
-
-        return new_block
-
-# Although this function logically belongs to the DataBlock class, we define
-# it here, because methods attached to classes cannot be inlined
-cdef inline int add_feature(Example e, int index, double val) except -1:
-    if e.block.is_full:
-        e.move_to_new_block()
-        if e.block.is_full:
-            raise StandardError("Number of features on line exceeds block size")
-
-    e.block.index[e.block.next_i] = index
-    e.block.val[e.block.next_i] = val
-    e.block.next_i = e.block.next_i + 1
-    e.block.is_full = e.block.next_i == e.block.size
-
-    return 0
 
 cdef class Dataset(object):
     def __init__(self, n_labels, quadratic=[], ignore=[]):
@@ -122,41 +72,31 @@ cdef class Dataset(object):
 
 
 cdef class Example(object):
-    def __init__(self, DataBlock block, int offset):
-        self.block = block
-        self.offset = offset
-
+    def __init__(self, Dataset dataset):
         # Initialize cost array with 1.0
-        self.cost = array.clone(array.array("d"), block.n_labels, False)
+        self.dataset = dataset
+        self.cost = array.clone(array.array("d"), dataset.n_labels, False)
         cdef int i
-        for i in range(block.n_labels):
+        for i in range(dataset.n_labels):
             self.cost[i] = 1.0
-
-
-    cdef void move_to_new_block(self):
-        cdef DataBlock new_block
-
-        new_block = self.block.copy_rest_to_new()
-        self.block = new_block
-
-    cdef init_views(self):
-        self.index = self.block.index[self.offset:self.offset+self.length]
-        self.val = self.block.val[self.offset:self.offset+self.length]
-
-
-    cpdef int flat_label(self):
-        cdef int i
-        for i in range(self.block.n_labels):
-            if self.cost[i] == 0:
-                return i + 1
-
 
     def __dealloc__(self):
         if self.id_: free(self.id_)
 
+    cpdef int flat_label(self):
+        cdef int i
+        for i in range(self.dataset.n_labels):
+            if self.cost[i] == 0:
+                return i + 1
+
+    cdef inline int add_feature(self, int index, double val):
+        cdef Feature feat = Feature(index, val)
+        self.features.push_back(feat)
+        return 0
+
     def __repr__(self):
         return "<Example id={} with " \
-               "{} features.>".format(self.id_, self.length)
+               "{} features and {} constraints.>".format(self.id_, self.features.size(), self.constraints.size())
 
 
 cdef int parse_header(char* header, Example e) except -1:
@@ -170,8 +110,7 @@ cdef int parse_header(char* header, Example e) except -1:
         if first_char == '?':
             read = sscanf(header_elem + 1, "%i", &label)
             if read == 1:
-                pass
-                #constraints.append(label)
+                e.constraints.push_back(label)
         elif first_char == '\'':
             e.id_ = strdup(&header_elem[1])
         elif isdigit(first_char):
@@ -183,7 +122,7 @@ cdef int parse_header(char* header, Example e) except -1:
             if strchr(header_elem, ':') != NULL:
                 read = sscanf(header_elem, "%i:%lf", &label, &cost)
                 if read == 2:
-                    if 0 < label <= e.block.n_labels:
+                    if 0 < label <= e.dataset.n_labels:
                         e.cost[label-1] = cost
                     else:
                         raise StandardError("Invalid label: {}".format(label))
@@ -196,7 +135,7 @@ cdef int parse_header(char* header, Example e) except -1:
             else:
                 read = sscanf(header_elem, "%i", &label)
                 if read == 1:
-                    if 0 < label <= e.block.n_labels:
+                    if 0 < label <= e.dataset.n_labels:
                         e.cost[label-1] = 0.0
                     else:
                         raise StandardError("Invalid label: {}".format(label))
@@ -237,7 +176,6 @@ cdef int quadratic_combinations(char* quadratic, Example e, int[] ns_begin, char
         int arg1_begin, arg2_begin
         int arg1_i, arg2_i
         char combined_name[MAX_FEAT_NAME_LEN]
-        int n_combos = 0
 
     for arg_i in range(0, len(quadratic), 2):
         arg1 = quadratic[arg_i]
@@ -277,12 +215,9 @@ cdef int quadratic_combinations(char* quadratic, Example e, int[] ns_begin, char
 
                 feat_i = feat_map.feat_i(combined_name)
                 if feat_i >= 0:
-                    add_feature(e,
-                                feat_i,
-                                e.val[arg1_i] * e.val[arg2_i])
-                    n_combos += 1
+                    e.add_feature(feat_i, e.val[arg1_i] * e.val[arg2_i])
 
-    return n_combos
+    return 0
 
 
 cdef int parse_features(char* feature_str, Example e, char* quadratic, FeatMap feat_map) except -1:
@@ -338,7 +273,7 @@ cdef int parse_features(char* feature_str, Example e, char* quadratic, FeatMap f
                 feat_i = feat_map.feat_i(ns_and_feature_name)
 
                 if feat_i >= 0:
-                    add_feature(e, feat_i, cur_val)
+                    e.add_feature(feat_i, cur_val)
 
                     feature_begin[n_features] = feat_and_val
                     ns[n_features] = cur_ns_first
@@ -346,10 +281,9 @@ cdef int parse_features(char* feature_str, Example e, char* quadratic, FeatMap f
 
         feat_and_val = strsep(&feature_str, " ")
 
-    n_features += quadratic_combinations(quadratic, e, ns_begin, ns, n_features, feature_begin, feat_map)
+    quadratic_combinations(quadratic, e, ns_begin, ns, n_features, feature_begin, feat_map)
 
-    return n_features
-
+    return 0
 
 def read_vw_seq(filename, n_labels, FeatMap feat_map, quadratic=[], ignore=[]):
     cdef:
@@ -362,7 +296,6 @@ def read_vw_seq(filename, n_labels, FeatMap feat_map, quadratic=[], ignore=[]):
         double instance_weight
         size_t id_len
         Example e
-        Example prev_e = None
         char *header
         Dataset dataset
 
@@ -371,7 +304,7 @@ def read_vw_seq(filename, n_labels, FeatMap feat_map, quadratic=[], ignore=[]):
     seqs = []
     seq = []
 
-    e = Example(DataBlock(BLOCK_SIZE, n_labels), 0)
+    e = Example(dataset)
 
     cfile = fopen(filename, "rb")
     if cfile == NULL:
@@ -390,8 +323,7 @@ def read_vw_seq(filename, n_labels, FeatMap feat_map, quadratic=[], ignore=[]):
 
         # m = header_re.match(line)
         if len(line) >= 1:
-            e.block.start_example()
-            e = Example(e.block, e.block.example_start)
+            e = Example(dataset)
 
             bar_pos = strchr(line, '|')
             if bar_pos == NULL:
@@ -404,11 +336,8 @@ def read_vw_seq(filename, n_labels, FeatMap feat_map, quadratic=[], ignore=[]):
             features_parsed = parse_features(bar_pos, e, dataset.quadratic, feat_map)
 
             # Add constant feature
-            add_feature(e, feat_map.feat_i("^Constant"), 1)
+            e.add_feature(feat_map.feat_i("^Constant"), 1)
             features_parsed += 1
-
-            e.length = features_parsed
-            e.init_views()
 
             seq.append(e)
 

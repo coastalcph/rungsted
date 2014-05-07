@@ -1,5 +1,4 @@
 *.c
-*.cpp
 *.so
 *.html
 loc_*

@@ -9,7 +9,7 @@ import numpy as np
 cimport numpy as cnp
 from feat_map cimport HashingFeatMap, FeatMap
 
-from .input cimport Example, Dataset, DataBlock
+from .input cimport Example, Dataset, Feature
 
 cdef extern from "math.h":
     float INFINITY
@@ -73,6 +73,7 @@ def update_weights(int[:] pred_seq, int[:] gold_seq, list sent, Weights w, int n
     cdef int word_i, i
     cdef Example cur
     cdef int pred_label, gold_label
+    cdef Feature feat
     # Update emission features
 
     for word_i in range(len(pred_seq)):
@@ -82,11 +83,11 @@ def update_weights(int[:] pred_seq, int[:] gold_seq, list sent, Weights w, int n
 
         # Update if prediction is not correct
         if gold_label != pred_label:
-            for i in range(cur.index.shape[0]):
-                w.update_e(feat_map.feat_i_for_label(cur.index[i], gold_label),
-                           cur.val[i] * alpha, n_updates)
-                w.update_e(feat_map.feat_i_for_label(cur.index[i], pred_label),
-                           -cur.val[i] * alpha, n_updates)
+            for feat in cur.features:
+                w.update_e(feat_map.feat_i_for_label(feat.index, gold_label),
+                           feat.value * alpha, n_updates)
+                w.update_e(feat_map.feat_i_for_label(feat.index, pred_label),
+                           -feat.value * alpha, n_updates)
 
             # Transition from from initial state
             if word_i == 0:
@@ -104,6 +105,9 @@ def update_weights(int[:] pred_seq, int[:] gold_seq, list sent, Weights w, int n
 @cython.wraparound(True)
 def viterbi(list sent, int n_labels, Weights w, FeatMap feat_map):
     """Returns best predicted sequence"""
+    cdef Example e
+    cdef Feature feat
+
     # Allocate trellis and back pointers
     path = np.zeros((len(sent), n_labels), dtype=np.int32)*-1
     # trellis = sent.allowed_label_matrix(n_labels)
@@ -131,6 +135,7 @@ cdef viterbi_path(list seq, int n_labels, Weights w, double[:, ::1] trellis, int
         int word_i = 0
         double feat_val
         Example cur
+        Feature feat
 
     for word_i in range(len(seq)):
         cur = seq[word_i]
@@ -141,12 +146,12 @@ cdef viterbi_path(list seq, int n_labels, Weights w, double[:, ::1] trellis, int
 
             min_score = -1E9
             min_prev = -1
-            e_score = 0
-            # Emission score
 
-            for i in range(cur.index.shape[0]):
-                feat_i = feat_map.feat_i_for_label(cur.index[i], cur_label_0 + 1)
-                e_score += w.e[feat_i] * cur.val[i]
+            # Emission score
+            e_score = 0
+            for feat in cur.features:
+                feat_i = feat_map.feat_i_for_label(feat.index, cur_label_0 + 1)
+                e_score += w.e[feat_i] * feat.value
 
             # Previous label
             if word_i == 0:

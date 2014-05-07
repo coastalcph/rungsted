@@ -1,3 +1,5 @@
+from libcpp.vector cimport vector
+
 cdef class Dataset(object):
     cdef:
         char *quadratic
@@ -6,34 +8,20 @@ cdef class Dataset(object):
         int n_labels
 
 
-cdef class DataBlock(object):
-    cdef:
-        int[::1] index
-        double[::1] val
-        public double[::1] cost
-        int size
-        int next_i
-        int example_start
-        int is_full
-        int n_labels
+cdef struct s_feature:
+    int index
+    double value
 
-    cdef void start_example(self)
-    cdef DataBlock copy_rest_to_new(self)
-
+ctypedef s_feature Feature
 
 cdef class Example(object):
     cdef:
         char * id_
-        DataBlock block
-        public int[:] index
-        public double[:] val
-        int length
+        Dataset dataset
         double importance
         public double[:] cost
-        public Example next
-        public Example prev
-        int offset
+        vector[Feature] features
+        vector[int] constraints
 
-    cdef void move_to_new_block(self)
-    cdef init_views(self)
     cpdef int flat_label(self)
+    cdef inline int add_feature(self, int, double)
