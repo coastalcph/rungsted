@@ -2,8 +2,10 @@
 import argparse
 import logging
 import random
+import cPickle
 import numpy as np
 import sys
+from os.path import exists
 from feat_map import HashingFeatMap, DictFeatMap
 
 from input import read_vw_seq
@@ -25,7 +27,8 @@ parser.add_argument('--decay-delay', help="Delay decaying the learning rate for 
                     default=10, type=int)
 parser.add_argument('--shuffle', help="Shuffle examples after each iteration", action='store_true')
 parser.add_argument('--average', help="Average over all updates", action='store_true')
-
+parser.add_argument('--initial-model', '-i', help="Initial model from this file")
+parser.add_argument('--final-model', '-f', help="Save model here after training")
 
 args = parser.parse_args()
 
@@ -37,48 +40,62 @@ if args.hash_bits:
 else:
     feat_map = DictFeatMap(args.n_labels)
 
-train = read_vw_seq(args.train, args.n_labels, ignore=args.ignore, feat_map=feat_map)
-logging.info("Training data {} sentences".format(len(train)))
+if args.initial_model:
+    if not args.hash_bits and exists(args.initial_model + ".features"):
+        feat_map.feat2index_ = cPickle.load(open(args.initial_model + ".features"))
+
+train = None
+if args.train:
+    train = read_vw_seq(args.train, args.n_labels, ignore=args.ignore, feat_map=feat_map)
+    logging.info("Training data {} sentences".format(len(train)))
+
 # Prevents the addition of new features when loading the test set
 feat_map.freeze()
 test = read_vw_seq(args.test, args.n_labels, ignore=args.ignore, feat_map=feat_map)
 logging.info("Test data {} sentences".format(len(test)))
-
-w = Weights(n_labels, feat_map.n_feats())
 logging.info("Weight vector size {}".format(feat_map.n_feats()))
+
+# Loading weights
+w = Weights(n_labels, feat_map.n_feats())
+if args.initial_model:
+    w.load(open(args.initial_model))
+
+if not args.hash_bits and args.final_model:
+    cPickle.dump(feat_map.feat2index_, open(args.final_model + ".features", 'w'), protocol=2)
 
 n_updates = 0
 
+# Training loop
+if args.train:
+    for epoch in range(1, args.passes+1):
+        learning_rate = 0.1 if epoch < args.decay_delay else epoch**args.decay_exp * 0.1
+        if args.shuffle:
+            random.shuffle(train)
+        for sent in train:
+            flattened_labels = [e.flat_label() for e in sent]
 
-# Learning loop
-for epoch in range(1, args.passes+1):
-    learning_rate = 0.1 if epoch < args.decay_delay else epoch**args.decay_exp * 0.1
-    if args.shuffle:
-        random.shuffle(train)
-    for sent in train:
-        flattened_labels = [e.flat_label() for e in sent]
+            gold_seq = np.array(flattened_labels, dtype=np.int32)
+            pred_seq = np.array(viterbi(sent, n_labels, w, feat_map), dtype=np.int32)
 
-        gold_seq = np.array(flattened_labels, dtype=np.int32)
-        pred_seq = np.array(viterbi(sent, n_labels, w, feat_map), dtype=np.int32)
+            assert len(gold_seq) == len(pred_seq)
 
-        assert len(gold_seq) == len(pred_seq)
+            update_weights(pred_seq, gold_seq, sent, w, n_updates, learning_rate, n_labels, feat_map)
 
-        update_weights(pred_seq, gold_seq, sent, w, n_updates, learning_rate, n_labels, feat_map)
+            n_updates += 1
 
-        n_updates += 1
+            if n_updates % 1000 == 0:
+                print >>sys.stderr, '\r{} k sentences total'.format(n_updates / 1000),
 
-        if n_updates % 1000 == 0:
-            print >>sys.stderr, '\r{} k sentences total'.format(n_updates / 1000),
+        if args.average:
+            w.average_weights(n_updates)
 
+# Testing
 y_gold = []
 y_pred = []
 
 out = None
 if args.predictions:
     out = open(args.predictions, 'w')
-
-if args.average:
-    w.average_weights(n_updates)
 
 for sent in test:
     y_pred_sent = viterbi(sent, n_labels, w, feat_map)
@@ -96,3 +113,7 @@ accuracy = correct.sum() / float(len(correct))
 
 print >>sys.stderr, ''
 logging.info("Accuracy: {:.3f}".format(accuracy))
+
+# Save model
+if args.final_model:
+    w.save(open(args.final_model, 'w'))

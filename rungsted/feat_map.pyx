@@ -88,6 +88,7 @@ cdef class DictFeatMap(FeatMap):
 
         def __set__(self, value):
             self.feat2index = value
+            self.next_i = len(value)
 
 
     def __init__(self, int n_labels):

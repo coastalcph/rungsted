@@ -68,6 +68,16 @@ cdef class Weights:
             self.t[label_i, label_j] += val
 
 
+    def load(self, file):
+        with np.load(file) as npz_file:
+            assert self.e.shape[0] == npz_file['e'].shape[0]
+            assert self.t.shape[0] == npz_file['t'].shape[0]
+            assert self.t.shape[1] == npz_file['t'].shape[1]
+            self.e = npz_file['e']
+            self.t = npz_file['t']
+
+    def save(self, file):
+        np.savez(file, e=self.e, t=self.t)
 
 def update_weights(int[:] pred_seq, int[:] gold_seq, list sent, Weights w, int n_updates, double alpha, int n_labels,
                    FeatMap feat_map):
@@ -128,7 +138,7 @@ def viterbi(list sent, int n_labels, Weights w, FeatMap feat_map):
     # Find best sequence from the trellis
     best_seq = [np.asarray(trellis)[-1].argmax()]
     for word_i in reversed(range(1, len(path))):
-        best_seq.append(path[word_i, best_seq[-1]])
+        best_seq.append(path[word_i, <int> best_seq[-1]])
 
     return [label + 1 for label in reversed(best_seq)]
 
