@@ -68,6 +68,7 @@ cdef class Weights:
             self.t[label_i, label_j] += val
 
 
+
 def update_weights(int[:] pred_seq, int[:] gold_seq, list sent, Weights w, int n_updates, double alpha, int n_labels,
                    FeatMap feat_map):
     cdef int word_i, i
@@ -107,15 +108,25 @@ def viterbi(list sent, int n_labels, Weights w, FeatMap feat_map):
     """Returns best predicted sequence"""
     cdef Example e
     cdef Feature feat
+    cdef int word_0, label_0, label
 
-    # Allocate trellis and back pointers
-    path = np.zeros((len(sent), n_labels), dtype=np.int32)*-1
-    # trellis = sent.allowed_label_matrix(n_labels)
-    trellis = np.zeros_like(path, dtype=np.float64)
+    # Allocate back pointers
+    cdef int[:, ::1] path = np.zeros((len(sent), n_labels), dtype=np.int32)*-1
 
+    # Setup trellis for constrained inference
+    cdef double[:, ::1] trellis = np.zeros((len(sent), n_labels), dtype=np.float64)
+    for word_0, e in enumerate(sent):
+        if e.constraints.size() > 0:
+            for label_0 in range(n_labels):
+                trellis[word_0, label_0] = -INFINITY
+            for label in e.constraints:
+                trellis[word_0, label - 1] = 0
+
+    # Fill in trellis and back pointers
     viterbi_path(sent, n_labels, w, trellis, path, feat_map)
 
-    best_seq = [trellis[-1].argmax()]
+    # Find best sequence from the trellis
+    best_seq = [np.asarray(trellis)[-1].argmax()]
     for word_i in reversed(range(1, len(path))):
         best_seq.append(path[word_i, best_seq[-1]])
 

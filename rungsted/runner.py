@@ -57,10 +57,6 @@ for epoch in range(1, args.passes+1):
         random.shuffle(train)
     for sent in train:
         flattened_labels = [e.flat_label() for e in sent]
-        # print "Label seq: {}".format(flattened_labels)
-
-        # print flattened_labels
-        # print flattened_labels, list(sent.cost)
 
         gold_seq = np.array(flattened_labels, dtype=np.int32)
         pred_seq = np.array(viterbi(sent, n_labels, w, feat_map), dtype=np.int32)

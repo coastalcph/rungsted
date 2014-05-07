@@ -73,9 +73,9 @@ cdef class Dataset(object):
 
 cdef class Example(object):
     def __init__(self, Dataset dataset):
-        # Initialize cost array with 1.0
         self.dataset = dataset
         self.cost = array.clone(array.array("d"), dataset.n_labels, False)
+        # Initialize cost array with 1.0
         cdef int i
         for i in range(dataset.n_labels):
             self.cost[i] = 1.0
@@ -321,7 +321,6 @@ def read_vw_seq(filename, n_labels, FeatMap feat_map, quadratic=[], ignore=[]):
         if line[read-1] == '\n':
             line[read-1] = '\0'
 
-        # m = header_re.match(line)
         if len(line) >= 1:
             e = Example(dataset)
 
