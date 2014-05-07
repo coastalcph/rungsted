@@ -1,9 +1,10 @@
 from libcpp.vector cimport vector
+from libcpp.string cimport string
 
 cdef class Dataset(object):
     cdef:
-        char *quadratic
-        char *ignore
+        vector[string] quadratic
+        int[255] ignore
         int nnz
         int n_labels
 

@@ -3,22 +3,13 @@
 #cython: wraparound=False
 
 from libc.stdio cimport FILE, sscanf
-from libc.stdint cimport uint32_t, int64_t
-from libc.stdlib cimport malloc, free
-from libcpp.vector cimport vector
+from libc.stdlib cimport free
 
 import numpy as np
 cimport numpy as cnp
-from numpy cimport PyArray_SimpleNewFromData
-from cpython.mem cimport PyMem_Malloc, PyMem_Realloc, PyMem_Free
-from cython cimport view
-from cpython cimport PyObject, Py_INCREF, Py_DECREF
 from cpython cimport array
 
-cimport cython
-import sys
 from feat_map cimport FeatMap
-
 
 cnp.import_array()
 
@@ -32,17 +23,9 @@ cdef extern from "stdlib.h":
 
 cdef extern from "string.h":
     char * strchr ( char *, int )
-    char * strtok(char *, char *)
     char * strsep(char **, char *)
     char * strdup(const char *)
-    char * strcpy(char *, char *)
-    char * strncpy(char *, char *, size_t)
-    int strlen(char *)
     int snprintf(char *, size_t, char *, ...)
-    void * memset(void *, int, size_t)
-    void * memcpy(void *, const void *, size_t)
-    int asprintf(char **, char *, ...)
-    size_t strlcpy(char *, const char *, size_t)
     char * strndup(const char *, size_t)
     int isspace(int c)
 
@@ -53,22 +36,24 @@ DEF MAX_LEN = 2048
 DEF MAX_FEAT_NAME_LEN = 1024
 cdef char* DEFAULT_NS = ""
 
-
 cdef class Dataset(object):
-    def __init__(self, n_labels, quadratic=[], ignore=[]):
-        for combo in quadratic:
-            if not isinstance(combo, str) or len(combo) != 2:
-                raise StandardError("Invalid quadratic combination: {}".format(combo))
-        quadratic_str = "".join(quadratic)
-        self.quadratic = quadratic_str
-
+    def __cinit__(self, n_labels, quadratic=[], ignore=[]):
+        # Initialize ignore
+        cdef int i = 0
+        for i in range(256): self.ignore[i] = 0
         for ns in ignore:
             if not isinstance(ns, str) or len(ns) != 1:
-                raise StandardError("Invalid namespace to ignore: {}. Use one-character prefix of the namespace".format(ns))
-        ignore_str = "".join(ignore)
-        self.ignore = ignore_str
+                raise ValueError("Invalid namespace to ignore: {}. Use one-character prefix of the namespace".format(ns))
+            else:
+                self.ignore[ord(ns)] = 1
+
         self.nnz = 0
         self.n_labels = n_labels
+
+        for combo in quadratic:
+            if not isinstance(combo, str) or len(combo) != 2:
+                raise ValueError("Invalid quadratic combination: {}".format(combo))
+            self.quadratic.push_back(combo)
 
 
 cdef class Example(object):
@@ -125,22 +110,22 @@ cdef int parse_header(char* header, Example e) except -1:
                     if 0 < label <= e.dataset.n_labels:
                         e.cost[label-1] = cost
                     else:
-                        raise StandardError("Invalid label: {}".format(label))
+                        raise ValueError("Invalid label: {}".format(label))
                 else:
-                    raise StandardError("Invalid label specification: {}".format(header_elem))
+                    raise ValueError("Invalid label specification: {}".format(header_elem))
             elif strchr(header_elem, '.') != NULL:
                 read = sscanf(header_elem, "%lf", &e.importance)
                 if read != 1:
-                    raise StandardError("Invalid importance weight: {}".format(header_elem))
+                    raise ValueError("Invalid importance weight: {}".format(header_elem))
             else:
                 read = sscanf(header_elem, "%i", &label)
                 if read == 1:
                     if 0 < label <= e.dataset.n_labels:
                         e.cost[label-1] = 0.0
                     else:
-                        raise StandardError("Invalid label: {}".format(label))
+                        raise ValueError("Invalid label: {}".format(label))
                 else:
-                    raise StandardError("Invalid label specification: {}".format(header_elem))
+                    raise ValueError("Invalid label specification: {}".format(header_elem))
 
         header_elem = strsep(&header, " ")
 
@@ -168,7 +153,7 @@ cdef double separate_and_parse_val(char* string_with_value) except -1:
         return 1
 
 
-cdef int quadratic_combinations(char* quadratic, Example e, int[] ns_begin, char[] ns, int n_features,
+cdef int quadratic_combinations(Dataset dataset, Example e, int[] ns_begin, char[] ns,
                                 char** feature_begin, FeatMap feat_map) except -1:
     cdef:
         int arg_i, feat_i = -1
@@ -176,10 +161,11 @@ cdef int quadratic_combinations(char* quadratic, Example e, int[] ns_begin, char
         int arg1_begin, arg2_begin
         int arg1_i, arg2_i
         char combined_name[MAX_FEAT_NAME_LEN]
+        int n_features = e.features.size()
 
-    for arg_i in range(0, len(quadratic), 2):
-        arg1 = quadratic[arg_i]
-        arg2 = quadratic[arg_i+1]
+    for combo in dataset.quadratic:
+        arg1 = combo[0]
+        arg2 = combo[1]
 
         arg1_begin = 0 if arg1 == ':' else ns_begin[<int> arg1]
         arg2_begin = 0 if arg2 == ':' else ns_begin[<int> arg2]
@@ -192,9 +178,6 @@ cdef int quadratic_combinations(char* quadratic, Example e, int[] ns_begin, char
         # two features x and y), we require the index of the feature
         # in the namespace given by arg2 to be strictly larger than the
         # index of the arg1 feature. That is: arg2_i > arg1_i.
-        # The problem arises when combining a namespace with itself
-        # (arg1 == arg2) or using the all-namespaces symbol
-        # (arg1 == ':' or arg2 == ':').
         #
         # Therefore, we may need to swap to arguments to ensure that
         # the arg2 namespace is after arg1
@@ -215,12 +198,12 @@ cdef int quadratic_combinations(char* quadratic, Example e, int[] ns_begin, char
 
                 feat_i = feat_map.feat_i(combined_name)
                 if feat_i >= 0:
-                    e.add_feature(feat_i, e.val[arg1_i] * e.val[arg2_i])
+                    e.add_feature(feat_i, e.features[arg1_i].value * e.features[arg2_i].value)
 
     return 0
 
 
-cdef int parse_features(char* feature_str, Example e, char* quadratic, FeatMap feat_map) except -1:
+cdef int parse_features(char* feature_str, Example e, Dataset dataset, FeatMap feat_map) except -1:
     cdef:
         char ns[MAX_LEN]
         char * feature_begin[MAX_LEN]
@@ -261,27 +244,28 @@ cdef int parse_features(char* feature_str, Example e, char* quadratic, FeatMap f
 
         else:
             if n_features == MAX_LEN:
-                raise StandardError("Number of features on line exceeds maximum allowed (defined by MAX_LEN)")
+                raise ValueError("Number of features on line exceeds maximum allowed (defined by MAX_LEN)")
 
-            # Trim space
-            while isspace(feat_and_val[0]):
-                feat_and_val += 1
+            if not e.dataset.ignore[<int> cur_ns_first]:
+                # Trim space
+                while isspace(feat_and_val[0]):
+                    feat_and_val += 1
 
-            if feat_and_val[0] != "\0":
-                cur_val = separate_and_parse_val(feat_and_val) * cur_ns_mult
-                snprintf(ns_and_feature_name, MAX_FEAT_NAME_LEN, "%s^%s", cur_ns, feat_and_val)
-                feat_i = feat_map.feat_i(ns_and_feature_name)
+                if feat_and_val[0] != "\0":
+                    cur_val = separate_and_parse_val(feat_and_val) * cur_ns_mult
+                    snprintf(ns_and_feature_name, MAX_FEAT_NAME_LEN, "%s^%s", cur_ns, feat_and_val)
+                    feat_i = feat_map.feat_i(ns_and_feature_name)
 
-                if feat_i >= 0:
-                    e.add_feature(feat_i, cur_val)
+                    if feat_i >= 0:
+                        e.add_feature(feat_i, cur_val)
 
-                    feature_begin[n_features] = feat_and_val
-                    ns[n_features] = cur_ns_first
-                    n_features += 1
+                        feature_begin[n_features] = feat_and_val
+                        ns[n_features] = cur_ns_first
+                        n_features += 1
 
         feat_and_val = strsep(&feature_str, " ")
 
-    quadratic_combinations(quadratic, e, ns_begin, ns, n_features, feature_begin, feat_map)
+    quadratic_combinations(dataset, e, ns_begin, ns, feature_begin, feat_map)
 
     return 0
 
@@ -308,7 +292,7 @@ def read_vw_seq(filename, n_labels, FeatMap feat_map, quadratic=[], ignore=[]):
 
     cfile = fopen(filename, "rb")
     if cfile == NULL:
-        raise StandardError(2, "No such file or directory: '%s'" % filename)
+        raise ValueError(2, "No such file or directory: '%s'" % filename)
 
     while True:
         read = getline(&line, &l, cfile)
@@ -326,17 +310,16 @@ def read_vw_seq(filename, n_labels, FeatMap feat_map, quadratic=[], ignore=[]):
 
             bar_pos = strchr(line, '|')
             if bar_pos == NULL:
-                raise StandardError("Missing | character in example")
+                raise ValueError("Missing | character in example")
 
             header = strndup(line, bar_pos - line)
             parse_header(header, e)
             free(header)
 
-            features_parsed = parse_features(bar_pos, e, dataset.quadratic, feat_map)
+            parse_features(bar_pos, e, dataset, feat_map)
 
             # Add constant feature
             e.add_feature(feat_map.feat_i("^Constant"), 1)
-            features_parsed += 1
 
             seq.append(e)
 

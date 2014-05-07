@@ -21,6 +21,8 @@ parser.add_argument('--n-labels', '-k', help="Number of different labels", requi
 parser.add_argument('--passes', help="Number of passes over the training set", type=int, default=5)
 parser.add_argument('--predictions', '-p', help="File for outputting predictions")
 parser.add_argument('--ignore', help="One-character prefix of namespaces to ignore", nargs='*', default=[])
+parser.add_argument('--quadratic', '-q', help="Combine features in these two namespace, identified by a one-character prefix of their name"
+                                              "':' is a short-hand for all namespaces", nargs='*', default=[])
 parser.add_argument('--decay-exp', help="Learning rate decay exponent. Learning rate is (iteration no)^decay_exponent",
                     default=0, type=float)
 parser.add_argument('--decay-delay', help="Delay decaying the learning rate for this many iterations",
@@ -29,6 +31,7 @@ parser.add_argument('--shuffle', help="Shuffle examples after each iteration", a
 parser.add_argument('--average', help="Average over all updates", action='store_true')
 parser.add_argument('--initial-model', '-i', help="Initial model from this file")
 parser.add_argument('--final-model', '-f', help="Save model here after training")
+
 
 args = parser.parse_args()
 
@@ -46,14 +49,14 @@ if args.initial_model:
 
 train = None
 if args.train:
-    train = read_vw_seq(args.train, args.n_labels, ignore=args.ignore, feat_map=feat_map)
+    train = read_vw_seq(args.train, args.n_labels, ignore=args.ignore, quadratic=args.quadratic, feat_map=feat_map)
     logging.info("Training data {} sentences".format(len(train)))
 
 # Prevents the addition of new features when loading the test set
 feat_map.freeze()
 test = None
 if args.test:
-    test = read_vw_seq(args.test, args.n_labels, ignore=args.ignore, feat_map=feat_map)
+    test = read_vw_seq(args.test, args.n_labels, ignore=args.ignore, quadratic=args.quadratic, feat_map=feat_map)
     logging.info("Test data {} sentences".format(len(test)))
     logging.info("Weight vector size {}".format(feat_map.n_feats()))
 
