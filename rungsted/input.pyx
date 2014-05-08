@@ -60,6 +60,8 @@ cdef class Example(object):
     def __init__(self, Dataset dataset):
         self.dataset = dataset
         self.cost = array.clone(array.array("d"), dataset.n_labels, False)
+        self.pred_label = -1
+        self.gold_label = -1
         # Initialize cost array with 1.0
         cdef int i
         for i in range(dataset.n_labels):
@@ -67,12 +69,6 @@ cdef class Example(object):
 
     def __dealloc__(self):
         if self.id_: free(self.id_)
-
-    cpdef int flat_label(self):
-        cdef int i
-        for i in range(self.dataset.n_labels):
-            if self.cost[i] == 0:
-                return i + 1
 
     cdef inline int add_feature(self, int index, double val):
         cdef Feature feat = Feature(index, val)
@@ -86,7 +82,7 @@ cdef class Example(object):
 
 cdef int parse_header(char* header, Example e) except -1:
     cdef:
-        int label
+        int label, label_0
         char* header_elem = strsep(&header, " ")
         double cost
 
@@ -128,6 +124,12 @@ cdef int parse_header(char* header, Example e) except -1:
                     raise ValueError("Invalid label specification: {}".format(header_elem))
 
         header_elem = strsep(&header, " ")
+
+        # Set gold label if exists
+        for label_0 in range(e.dataset.n_labels):
+            if e.cost[label_0] == 0.0:
+                e.gold_label = label_0 + 1
+                break
 
     return 0
 

@@ -23,6 +23,7 @@ cdef class Example(object):
         public double[:] cost
         vector[Feature] features
         vector[int] constraints
+        public int pred_label
+        public int gold_label
 
-    cpdef int flat_label(self)
     cdef inline int add_feature(self, int, double)

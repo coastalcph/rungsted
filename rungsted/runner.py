@@ -1,6 +1,7 @@
 # coding: utf-8
 import argparse
 import logging
+import os
 import random
 import cPickle
 import numpy as np
@@ -9,7 +10,7 @@ from os.path import exists
 from feat_map import HashingFeatMap, DictFeatMap
 
 from input import read_vw_seq
-from struct_perceptron import Weights, viterbi, update_weights
+from struct_perceptron import Weights, viterbi, update_weights, avg_loss, accuracy
 
 logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
 
@@ -58,10 +59,11 @@ test = None
 if args.test:
     test = read_vw_seq(args.test, args.n_labels, ignore=args.ignore, quadratic=args.quadratic, feat_map=feat_map)
     logging.info("Test data {} sentences".format(len(test)))
-    logging.info("Weight vector size {}".format(feat_map.n_feats()))
+
 
 # Loading weights
 w = Weights(n_labels, feat_map.n_feats())
+logging.info("Weight vector size {}".format(feat_map.n_feats()))
 if args.initial_model:
     w.load(open(args.initial_model))
 
@@ -72,61 +74,35 @@ n_updates = 0
 
 # Training loop
 if args.train:
+    epoch_msg = ""
     for epoch in range(1, args.passes+1):
         learning_rate = 0.1 if epoch < args.decay_delay else epoch**args.decay_exp * 0.1
         if args.shuffle:
             random.shuffle(train)
         for sent in train:
-            flattened_labels = [e.flat_label() for e in sent]
-
-            gold_seq = np.array(flattened_labels, dtype=np.int32)
-            pred_seq = np.array(viterbi(sent, n_labels, w, feat_map), dtype=np.int32)
-
-            assert len(gold_seq) == len(pred_seq)
-
-            update_weights(pred_seq, gold_seq, sent, w, n_updates, learning_rate, n_labels, feat_map)
+            viterbi(sent, n_labels, w, feat_map)
+            update_weights(sent, w, n_updates, learning_rate, n_labels, feat_map)
 
             n_updates += 1
-
             if n_updates % 1000 == 0:
-                print >>sys.stderr, '\r{} k sentences total'.format(n_updates / 1000),
+                print >>sys.stderr, '\r{}\t{} k sentences total'.format(epoch_msg, n_updates / 1000),
 
-        if args.average:
-            w.average_weights(n_updates)
+        epoch_msg = "[{}] train loss={:.4f} ".format(epoch, avg_loss(train))
+        print >>sys.stderr, "\r{}{}".format(epoch_msg, " "*72)
+
+    if args.average:
+        w.average_weights(n_updates)
 
 # Testing
 if args.test:
-    y_gold = []
-    y_pred = []
-
-    out = None
-    if args.predictions:
-        out = open(args.predictions, 'w')
-
-    for sent in test:
-        y_pred_sent = viterbi(sent, n_labels, w, feat_map)
-        y_gold_sent = [e.flat_label() for e in sent]
-
-        if out:
-            for example, pred in zip(sent, y_pred_sent):
-                print >>out, "{}\t{}\t{}".format(example.id_, example.flat_label(), pred)
-
+    with open(args.predictions or os.devnull, 'w') as out:
+        for sent in test:
+            viterbi(sent, n_labels, w, feat_map)
+            for example in sent:
+                print >>out, "{}\t{}\t{}".format(example.id_, example.gold_label, example.pred_label)
             print >>out, ""
 
-        y_gold += y_gold_sent
-        y_pred += y_pred_sent
-
-    if out:
-        out.close()
-
-    assert len(y_gold) == len(y_pred)
-
-    correct = np.array(y_gold) == np.array(y_pred)
-
-    accuracy = correct.sum() / float(len(correct))
-
-    print >>sys.stderr, ''
-    logging.info("Accuracy: {:.3f}".format(accuracy))
+    logging.info("Accuracy: {:.3f}".format(accuracy(test)))
 
 # Save model
 if args.final_model:
