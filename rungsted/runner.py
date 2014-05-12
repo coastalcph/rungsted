@@ -32,7 +32,7 @@ parser.add_argument('--shuffle', help="Shuffle examples after each iteration", a
 parser.add_argument('--average', help="Average over all updates", action='store_true')
 parser.add_argument('--initial-model', '-i', help="Initial model from this file")
 parser.add_argument('--final-model', '-f', help="Save model here after training")
-
+parser.add_argument('--cost-sensitive', '--cs', help="Cost-sensitive weight updates", action='store_true')
 
 args = parser.parse_args()
 
@@ -43,6 +43,8 @@ if args.hash_bits:
     feat_map = HashingFeatMap(args.hash_bits)
 else:
     feat_map = DictFeatMap(args.n_labels)
+
+weight_updater = update_weights_cs if args.cost_sensitive else update_weights
 
 if args.initial_model:
     if not args.hash_bits and exists(args.initial_model + ".features"):
@@ -81,7 +83,7 @@ if args.train:
             random.shuffle(train)
         for sent in train:
             viterbi(sent, n_labels, w, feat_map)
-            update_weights(sent, w, learning_rate, n_labels, feat_map)
+            weight_updater(sent, w, learning_rate, n_labels, feat_map)
 
             w.incr_n_updates()
             if w.n_updates % 1000 == 0:

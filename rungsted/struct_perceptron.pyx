@@ -163,7 +163,7 @@ cdef update_transition_cs(list sent, Weights w, double alpha, int n_labels):
     cdef:
         int word_i
         Example cur, prev
-        double bigram_pred_cost, bigram_cost, total_bigram_inv_cost
+        double bigram_pred_cost, bigram_cost, total_bigram_inv_cost, this_bigram_factor
         int label_cur_0, label_prev_0
 
 
@@ -182,12 +182,14 @@ cdef update_transition_cs(list sent, Weights w, double alpha, int n_labels):
 
         bigram_pred_cost = cur.pred_cost() + prev.pred_cost()
 
+
         # If cost of current or previous prediction is not zero
         if bigram_pred_cost > 0:
             # Negative update
-            w.update_t(cur.pred_label - 1, prev.pred_label - 1, -alpha * (bigram_pred_cost / 2.0))
+            w.update_t(cur.pred_label - 1, prev.pred_label - 1, -alpha * bigram_pred_cost)
 
             # Sum the cost of advantages
+            total_bigram_inv_cost = 0
             for label_cur_0 in range(n_labels):
                 for label_prev_0 in range(n_labels):
                     bigram_cost = cur.cost[label_cur_0] + prev.cost[label_prev_0]
@@ -199,8 +201,9 @@ cdef update_transition_cs(list sent, Weights w, double alpha, int n_labels):
                 for label_prev_0 in range(n_labels):
                     bigram_cost = cur.cost[label_cur_0] + prev.cost[label_prev_0]
                     if bigram_cost < bigram_pred_cost:
+                        this_bigram_factor = (bigram_pred_cost - bigram_cost) / total_bigram_inv_cost
                         w.update_t(label_cur_0, label_prev_0,
-                                   alpha * ((bigram_pred_cost - bigram_cost) / total_bigram_inv_cost))
+                                   alpha * this_bigram_factor * bigram_pred_cost)
 
 
 cpdef double avg_loss(list sents):
