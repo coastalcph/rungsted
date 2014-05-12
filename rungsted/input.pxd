@@ -27,3 +27,4 @@ cdef class Example(object):
         public int gold_label
 
     cdef inline int add_feature(self, int, double)
+    cdef double pred_cost(self)

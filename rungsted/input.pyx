@@ -75,6 +75,9 @@ cdef class Example(object):
         self.features.push_back(feat)
         return 0
 
+    cdef double pred_cost(self):
+        return self.cost[self.pred_label - 1]
+
     def __repr__(self):
         return "<Example id={} with " \
                "{} features and {} constraints.>".format(self.id_, self.features.size(), self.constraints.size())

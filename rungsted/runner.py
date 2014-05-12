@@ -10,7 +10,7 @@ from os.path import exists
 from feat_map import HashingFeatMap, DictFeatMap
 
 from input import read_vw_seq
-from struct_perceptron import Weights, viterbi, update_weights, avg_loss, accuracy
+from struct_perceptron import Weights, viterbi, update_weights, avg_loss, accuracy, update_weights_cs
 
 logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
 
@@ -81,17 +81,17 @@ if args.train:
             random.shuffle(train)
         for sent in train:
             viterbi(sent, n_labels, w, feat_map)
-            update_weights(sent, w, n_updates, learning_rate, n_labels, feat_map)
+            update_weights(sent, w, learning_rate, n_labels, feat_map)
 
-            n_updates += 1
-            if n_updates % 1000 == 0:
-                print >>sys.stderr, '\r{}\t{} k sentences total'.format(epoch_msg, n_updates / 1000),
+            w.incr_n_updates()
+            if w.n_updates % 1000 == 0:
+                print >>sys.stderr, '\r{}\t{} k sentences total'.format(epoch_msg, w.n_updates / 1000),
 
         epoch_msg = "[{}] train loss={:.4f} ".format(epoch, avg_loss(train))
         print >>sys.stderr, "\r{}{}".format(epoch_msg, " "*72)
 
     if args.average:
-        w.average_weights(n_updates)
+        w.average_weights()
 
 # Testing
 if args.test:

@@ -25,6 +25,8 @@ cdef class Weights:
     cpdef public double [::1] e_acc
     cpdef public int [::1] e_last_update
 
+    cpdef public int n_updates
+
     def __init__(self, n_labels, n_e_feats):
         self.t = np.zeros((n_labels+1, n_labels), dtype=np.float64)
         self.t_acc = np.zeros_like(self.t, dtype=np.float64)
@@ -34,7 +36,9 @@ cdef class Weights:
         self.e_acc = np.zeros_like(self.e, dtype=np.float64)
         self.e_last_update = np.zeros_like(self.e, dtype=np.int32)
 
-    def average_weights(self, n_updates):
+        self.n_updates = 0
+
+    def average_weights(self):
         e = np.asarray(self.e)
         e_acc = np.asarray(self.e_acc)
         e_last_update = np.asarray(self.e_last_update)
@@ -42,27 +46,27 @@ cdef class Weights:
         t_acc = np.asarray(self.t_acc)
         t_last_update = np.asarray(self.t_last_update)
 
-        e_acc += e * (n_updates - e_last_update)
-        e = e_acc / n_updates
+        e_acc += e * (self.n_updates - e_last_update)
+        e = e_acc / self.n_updates
         self.e = e
 
-        t_acc += t * (n_updates - t_last_update)
-        t = t_acc / n_updates
+        t_acc += t * (self.n_updates - t_last_update)
+        t = t_acc / self.n_updates
         self.t = t
 
-    cpdef update_e(Weights self, int feat_i, double val, int n_updates):
-        cdef int missed_updates = n_updates - self.e_last_update[feat_i] - 1
+    cpdef update_e(Weights self, int feat_i, double val):
+        cdef int missed_updates = self.n_updates - self.e_last_update[feat_i] - 1
         with nogil:
-            self.e_last_update[feat_i] = n_updates
+            self.e_last_update[feat_i] = self.n_updates
             self.e_acc[feat_i] += missed_updates * self.e[feat_i]
             self.e_acc[feat_i] += self.e[feat_i] + val
             self.e[feat_i] += val
 
 
-    cpdef update_t(Weights self, int label_i, int label_j, double val, int n_updates):
-        cdef int missed_updates = n_updates - self.t_last_update[label_i, label_j] - 1
+    cpdef update_t(Weights self, int label_i, int label_j, double val):
+        cdef int missed_updates = self.n_updates - self.t_last_update[label_i, label_j] - 1
         with nogil:
-            self.t_last_update[label_i, label_j] = n_updates
+            self.t_last_update[label_i, label_j] = self.n_updates
             self.t_acc[label_i, label_j] += missed_updates * self.t[label_i, label_j]
             self.t_acc[label_i, label_j] += self.t[label_i, label_j] + val
             self.t[label_i, label_j] += val
@@ -79,7 +83,10 @@ cdef class Weights:
     def save(self, file):
         np.savez(file, e=self.e, t=self.t)
 
-def update_weights(list sent, Weights w, int n_updates, double alpha, int n_labels,
+    def incr_n_updates(self):
+        self.n_updates += 1
+
+def update_weights(list sent, Weights w, double alpha, int n_labels,
                    FeatMap feat_map):
     cdef int word_i, i
     cdef Example cur, prev
@@ -96,14 +103,14 @@ def update_weights(list sent, Weights w, int n_updates, double alpha, int n_labe
         if gold_label != pred_label:
             for feat in cur.features:
                 w.update_e(feat_map.feat_i_for_label(feat.index, gold_label),
-                           feat.value * alpha, n_updates)
+                           feat.value * alpha)
                 w.update_e(feat_map.feat_i_for_label(feat.index, pred_label),
-                           -feat.value * alpha, n_updates)
+                           -feat.value * alpha)
 
             # Transition from from initial state
             if word_i == 0:
-                w.update_t(n_labels, gold_label - 1, alpha, n_updates)
-                w.update_t(n_labels, pred_label - 1, -alpha, n_updates)
+                w.update_t(n_labels, gold_label - 1, alpha)
+                w.update_t(n_labels, pred_label - 1, -alpha)
 
     # Transition features
     for word_i in range(1, len(sent)):
@@ -111,8 +118,90 @@ def update_weights(list sent, Weights w, int n_updates, double alpha, int n_labe
         prev = sent[word_i - 1]
         # If current or previous prediction is not correct
         if cur.gold_label != cur.pred_label or prev.gold_label != prev.pred_label:
-            w.update_t(cur.gold_label - 1, prev.gold_label - 1, alpha, n_updates)
-            w.update_t(cur.pred_label - 1, prev.pred_label - 1, -alpha, n_updates)
+            w.update_t(cur.gold_label - 1, prev.gold_label - 1, alpha)
+            w.update_t(cur.pred_label - 1, prev.pred_label - 1, -alpha)
+
+@cython.cdivision(True)
+def update_weights_cs(list sent, Weights w, double alpha, int n_labels,
+                   FeatMap feat_map):
+    cdef:
+        int word_i, i
+        Example cur, prev
+        int label_0
+        Feature feat
+        double pred_cost, cost, total_inv_cost
+
+    # Update emission features
+    for word_i in range(len(sent)):
+        cur = sent[word_i]
+        pred_cost = cur.cost[cur.pred_label - 1]
+
+        if pred_cost > .0:
+            # Negative update
+            for feat in cur.features:
+                w.update_e(feat_map.feat_i_for_label(feat.index, cur.pred_label), -feat.value * alpha * pred_cost)
+
+            # Sum the cost of advantages
+            total_inv_cost = 0
+            for label_0 in range(n_labels):
+                if cur.cost[label_0] < pred_cost:
+                    total_inv_cost += (pred_cost - cur.cost[label_0])
+
+            # Perform positive update, dividing the update between all better (lower cost) alternatives.
+            # The update is inversely proportional to the cost of the label.
+            for label_0 in range(n_labels):
+                if cur.cost[label_0] < pred_cost:
+                    for feat in cur.features:
+                        w.update_e(feat_map.feat_i_for_label(feat.index, label_0 + 1),
+                                   feat.value * alpha * ((pred_cost - cur.cost[label_0]) / total_inv_cost))
+
+    update_transition_cs(sent, w, alpha, n_labels)
+
+
+#@cython.cdivision(True)
+cdef update_transition_cs(list sent, Weights w, double alpha, int n_labels):
+    cdef:
+        int word_i
+        Example cur, prev
+        double bigram_pred_cost, bigram_cost, total_bigram_inv_cost
+        int label_cur_0, label_prev_0
+
+
+    # Transition from start state
+    if len(sent) > 0:
+        cur = sent[0]
+        if cur.pred_cost() > 0:
+            w.update_t(n_labels, cur.gold_label - 1, alpha * cur.pred_cost())
+            w.update_t(n_labels, cur.pred_label - 1, -alpha * cur.pred_cost())
+
+
+    # Internal transitions
+    for word_i in range(1, len(sent)):
+        cur = sent[word_i]
+        prev = sent[word_i - 1]
+
+        bigram_pred_cost = cur.pred_cost() + prev.pred_cost()
+
+        # If cost of current or previous prediction is not zero
+        if bigram_pred_cost > 0:
+            # Negative update
+            w.update_t(cur.pred_label - 1, prev.pred_label - 1, -alpha * (bigram_pred_cost / 2.0))
+
+            # Sum the cost of advantages
+            for label_cur_0 in range(n_labels):
+                for label_prev_0 in range(n_labels):
+                    bigram_cost = cur.cost[label_cur_0] + prev.cost[label_prev_0]
+                    if bigram_cost < bigram_pred_cost:
+                        total_bigram_inv_cost += (bigram_pred_cost - bigram_cost)
+
+            # Perform positive update
+            for label_cur_0 in range(n_labels):
+                for label_prev_0 in range(n_labels):
+                    bigram_cost = cur.cost[label_cur_0] + prev.cost[label_prev_0]
+                    if bigram_cost < bigram_pred_cost:
+                        w.update_t(label_cur_0, label_prev_0,
+                                   alpha * ((bigram_pred_cost - bigram_cost) / total_bigram_inv_cost))
+
 
 cpdef double avg_loss(list sents):
     cdef:
