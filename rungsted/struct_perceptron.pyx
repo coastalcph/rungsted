@@ -274,7 +274,7 @@ def viterbi(Sequence sent, int n_labels, Weights w, FeatMap feat_map):
     return best_seq
 
 
-cdef viterbi_path(Sequence seq, int n_labels, Weights w, double[:, ::1] trellis, int[:, ::1] path, FeatMap feat_map):
+cdef void viterbi_path(Sequence seq, int n_labels, Weights w, double[:, ::1] trellis, int[:, ::1] path, FeatMap feat_map) nogil:
     cdef:
         double min_score
         double score
@@ -289,7 +289,7 @@ cdef viterbi_path(Sequence seq, int n_labels, Weights w, double[:, ::1] trellis,
         Example cur
         Feature feat
 
-    for word_i in range(len(seq)):
+    for word_i in range(seq.examples.size()):
         cur = seq.examples[word_i]
         # Current label
         for cur_label_0 in range(n_labels):

@@ -5,7 +5,7 @@ cdef class FeatMap(object):
         int frozen
 
     cdef int32_t feat_i(self, char * feat)
-    cdef int32_t feat_i_for_label(self, uint32_t feat_i, uint32_t label)
+    cdef int32_t feat_i_for_label(self, uint32_t feat_i, uint32_t label) nogil
     cpdef int32_t n_feats(self)
     cpdef int freeze(self)
     cpdef int unfreeze(self)
