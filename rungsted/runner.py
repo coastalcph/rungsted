@@ -100,9 +100,9 @@ if args.test:
     with open(args.predictions or os.devnull, 'w') as out:
         for sent in test:
             viterbi(sent, n_labels, w, feat_map)
-            for example in sent:
-                print >>out, "{}\t{}\t{}".format(example.id_, example.gold_label, example.pred_label)
-            print >>out, ""
+            # for example in sent:
+            #     print >>out, "{}\t{}\t{}".format(example.id_, example.gold_label, example.pred_label)
+            # print >>out, ""
 
     logging.info("Accuracy: {:.3f}".format(accuracy(test)))
 

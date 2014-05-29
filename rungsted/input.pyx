@@ -3,7 +3,7 @@
 #cython: wraparound=False
 
 from libc.stdio cimport FILE, sscanf
-from libc.stdlib cimport free
+from libc.stdlib cimport free, malloc
 
 import numpy as np
 cimport numpy as cnp
@@ -36,54 +36,105 @@ DEF MAX_LEN = 2048
 DEF MAX_FEAT_NAME_LEN = 1024
 cdef char* DEFAULT_NS = ""
 
-cdef class Dataset(object):
-    def __cinit__(self, n_labels, quadratic=[], ignore=[]):
-        # Initialize ignore
-        cdef int i = 0
-        for i in range(256): self.ignore[i] = 0
-        for ns in ignore:
-            if not isinstance(ns, str) or len(ns) != 1:
-                raise ValueError("Invalid namespace to ignore: {}. Use one-character prefix of the namespace".format(ns))
-            else:
-                self.ignore[ord(ns)] = 1
 
-        self.nnz = 0
-        self.n_labels = n_labels
+cdef class Sequence(object):
+    def __cinit(self):
+        pass
 
-        for combo in quadratic:
-            if not isinstance(combo, str) or len(combo) != 2:
-                raise ValueError("Invalid quadratic combination: {}".format(combo))
-            self.quadratic.push_back(combo)
-
-
-cdef class Example(object):
-    def __init__(self, Dataset dataset):
-        self.dataset = dataset
-        self.cost = array.clone(array.array("d"), dataset.n_labels, False)
-        self.pred_label = -1
-        self.gold_label = -1
-        # Initialize cost array with 1.0
-        cdef int i
-        for i in range(dataset.n_labels):
-            self.cost[i] = 1.0
-
-    def __dealloc__(self):
-        if self.id_: free(self.id_)
-
-    cdef inline int add_feature(self, int index, double val):
-        cdef Feature feat = Feature(index, val)
-        self.features.push_back(feat)
-        return 0
-
-    cdef double pred_cost(self):
-        return self.cost[self.pred_label - 1]
+    def __len__(self):
+        return self.examples.size()
 
     def __repr__(self):
-        return "<Example id={} with " \
-               "{} features and {} constraints.>".format(self.id_, self.features.size(), self.constraints.size())
+        cdef Example e
+        cdef int n_features = sum([e.features.size() for e in self.examples])
+        cdef int n_constraints = sum([e.constraints.size() for e in self.examples])
 
 
-cdef int parse_header(char* header, Example e) except -1:
+
+        if self.examples.size() > 0:
+            return "<Sequence ({} to {}) with {} tokens totalling " \
+                   "{} features and {} constraints.>".format(self.examples.front().id_,
+                                                             self.examples.back().id_,
+                                                             self.examples.size(),
+                                                             n_features, n_constraints)
+        else:
+            return "<Sequence empty>"
+
+    def __dealloc__(self):
+        cdef Example e
+        for e in self.examples:
+            example_free(&e)
+
+
+cdef Dataset dataset_new(int n_labels, list quadratic_list, list ignore_list):
+    cdef:
+        vector[string] quadratic
+        int * ignore
+        int i = 0
+
+    ignore = <int*> malloc(sizeof(int) * 256)
+    for i in range(256): ignore[i] = 0
+
+    # Initialize ignore
+    for ns in ignore_list:
+        if not isinstance(ns, str) or len(ns) != 1:
+            raise ValueError("Invalid namespace to ignore: {}. Use one-character prefix of the namespace".format(ns))
+        else:
+            ignore[ord(ns)] = 1
+
+    # Initialize quadratic
+    for combo in quadratic_list:
+        if not isinstance(combo, str) or len(combo) != 2:
+            raise ValueError("Invalid quadratic combination: {}".format(combo))
+        quadratic.push_back(combo)
+
+    cdef Dataset dataset
+    dataset = Dataset(
+        quadratic=quadratic,
+        ignore=ignore,
+        nnz=0,
+        n_labels=n_labels
+    )
+
+    return dataset
+
+cdef double pred_cost(Example example):
+    return example.cost[example.pred_label - 1]
+
+
+cdef Example example_new(Dataset dataset):
+    cdef vector[Feature] features
+    cdef vector[int] constraints
+
+    cdef Example example = Example(
+        dataset=dataset,
+        id_=NULL,
+        importance=1,
+        pred_label=-1,
+        gold_label=-1,
+        cost=<double *> malloc(sizeof(double) * dataset.n_labels),
+        features=features,
+        constraints=constraints,
+        pred_cost=1.0
+    )
+
+    cdef int i
+    for i in range(dataset.n_labels):
+        example.cost[i] = 1.0
+
+    return example
+
+cdef void example_free(Example * example):
+    if example.id_ != NULL :
+        free(example.id_)
+    if example.cost != NULL:
+        free(example.cost)
+
+cdef inline void add_feature(Example * example, int index, double val):
+    cdef Feature feat = Feature(index, val)
+    example.features.push_back(feat)
+
+cdef int parse_header(char* header, Example * e) except -1:
     cdef:
         int label, label_0
         char* header_elem = strsep(&header, " ")
@@ -158,7 +209,7 @@ cdef double separate_and_parse_val(char* string_with_value) except -1:
         return 1
 
 
-cdef int quadratic_combinations(Dataset dataset, Example e, int[] ns_begin, char[] ns,
+cdef int quadratic_combinations(Example * e, int[] ns_begin, char[] ns,
                                 char** feature_begin, FeatMap feat_map) except -1:
     cdef:
         int arg_i, feat_i = -1
@@ -168,7 +219,7 @@ cdef int quadratic_combinations(Dataset dataset, Example e, int[] ns_begin, char
         char combined_name[MAX_FEAT_NAME_LEN]
         int n_features = e.features.size()
 
-    for combo in dataset.quadratic:
+    for combo in e.dataset.quadratic:
         arg1 = combo[0]
         arg2 = combo[1]
 
@@ -203,12 +254,12 @@ cdef int quadratic_combinations(Dataset dataset, Example e, int[] ns_begin, char
 
                 feat_i = feat_map.feat_i(combined_name)
                 if feat_i >= 0:
-                    e.add_feature(feat_i, e.features[arg1_i].value * e.features[arg2_i].value)
+                    add_feature(e, feat_i, e.features[arg1_i].value * e.features[arg2_i].value)
 
     return 0
 
 
-cdef int parse_features(char* feature_str, Example e, Dataset dataset, FeatMap feat_map) except -1:
+cdef int parse_features(char* feature_str, Example * e, FeatMap feat_map) except -1:
     cdef:
         char ns[MAX_LEN]
         char * feature_begin[MAX_LEN]
@@ -262,7 +313,7 @@ cdef int parse_features(char* feature_str, Example e, Dataset dataset, FeatMap f
                     feat_i = feat_map.feat_i(ns_and_feature_name)
 
                     if feat_i >= 0:
-                        e.add_feature(feat_i, cur_val)
+                        add_feature(e, feat_i, cur_val)
 
                         feature_begin[n_features] = feat_and_val
                         ns[n_features] = cur_ns_first
@@ -270,7 +321,7 @@ cdef int parse_features(char* feature_str, Example e, Dataset dataset, FeatMap f
 
         feat_and_val = strsep(&feature_str, " ")
 
-    quadratic_combinations(dataset, e, ns_begin, ns, feature_begin, feat_map)
+    quadratic_combinations(e, ns_begin, ns, feature_begin, feat_map)
 
     return 0
 
@@ -287,13 +338,15 @@ def read_vw_seq(filename, n_labels, FeatMap feat_map, quadratic=[], ignore=[]):
         Example e
         char *header
         Dataset dataset
+        Sequence seq
 
 
-    dataset = Dataset(n_labels, ignore=ignore, quadratic=quadratic)
+    dataset = dataset_new(n_labels, quadratic, ignore)
     seqs = []
-    seq = []
 
-    e = Example(dataset)
+
+    e = example_new(dataset)
+    seq = Sequence()
 
     cfile = fopen(filename, "rb")
     if cfile == NULL:
@@ -302,7 +355,7 @@ def read_vw_seq(filename, n_labels, FeatMap feat_map, quadratic=[], ignore=[]):
     while True:
         read = getline(&line, &l, cfile)
         if read == -1:
-            if len(seq) > 0:
+            if seq.examples.size() > 0:
                 seqs.append(seq)
             break
 
@@ -311,27 +364,28 @@ def read_vw_seq(filename, n_labels, FeatMap feat_map, quadratic=[], ignore=[]):
             line[read-1] = '\0'
 
         if len(line) >= 1:
-            e = Example(dataset)
+            e = example_new(dataset)
 
             bar_pos = strchr(line, '|')
             if bar_pos == NULL:
                 raise ValueError("Missing | character in example")
 
             header = strndup(line, bar_pos - line)
-            parse_header(header, e)
+            parse_header(header, &e)
             free(header)
 
-            parse_features(bar_pos, e, dataset, feat_map)
+            parse_features(bar_pos, &e, feat_map)
 
             # Add constant feature
-            e.add_feature(feat_map.feat_i("^Constant"), 1)
+            add_feature(&e, feat_map.feat_i("^Constant"), 1)
 
-            seq.append(e)
+            seq.examples.push_back(e)
 
         else:
-            if len(seq) > 0:
+            # Empty line. Multiple empty lines after each other are ignored
+            if seq.examples.size() > 0:
                 seqs.append(seq)
-                seq = []
+                seq = Sequence()
 
     free(line)
 

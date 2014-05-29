@@ -1,13 +1,13 @@
 from libcpp.vector cimport vector
 from libcpp.string cimport string
 
-cdef class Dataset(object):
-    cdef:
-        vector[string] quadratic
-        int[255] ignore
-        int nnz
-        int n_labels
+cdef struct dataset_s:
+    vector[string] quadratic
+    int * ignore
+    int nnz
+    int n_labels
 
+ctypedef dataset_s Dataset
 
 cdef struct s_feature:
     int index
@@ -15,16 +15,21 @@ cdef struct s_feature:
 
 ctypedef s_feature Feature
 
-cdef class Example(object):
-    cdef:
-        public char * id_
-        Dataset dataset
-        double importance
-        public double[:] cost
-        vector[Feature] features
-        vector[int] constraints
-        public int pred_label
-        public int gold_label
+cdef struct example_s:
+    Dataset dataset
+    char * id_
+    double importance
+    double * cost
+    vector[Feature] features
+    vector[int] constraints
+    int pred_label
+    int gold_label
+    double pred_cost
 
-    cdef inline int add_feature(self, int, double)
-    cdef double pred_cost(self)
+ctypedef example_s Example
+
+cdef class Sequence(object):
+    cdef:
+        vector[Example] examples
+
+cdef double pred_cost(Example example)

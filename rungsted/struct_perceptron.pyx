@@ -9,7 +9,7 @@ import numpy as np
 cimport numpy as cnp
 from feat_map cimport HashingFeatMap, FeatMap
 
-from .input cimport Example, Dataset, Feature
+from .input cimport Example, Feature, Sequence
 
 cdef extern from "math.h":
     float INFINITY
@@ -86,7 +86,7 @@ cdef class Weights:
     def incr_n_updates(self):
         self.n_updates += 1
 
-def update_weights(list sent, Weights w, double alpha, int n_labels,
+def update_weights(Sequence sent, Weights w, double alpha, int n_labels,
                    FeatMap feat_map):
     cdef int word_i, i
     cdef Example cur, prev
@@ -95,7 +95,7 @@ def update_weights(list sent, Weights w, double alpha, int n_labels,
 
     # Update emission features
     for word_i in range(len(sent)):
-        cur = sent[word_i]
+        cur = sent.examples.at(word_i)
         pred_label = cur.pred_label
         gold_label = cur.gold_label
 
@@ -114,15 +114,15 @@ def update_weights(list sent, Weights w, double alpha, int n_labels,
 
     # Transition features
     for word_i in range(1, len(sent)):
-        cur = sent[word_i]
-        prev = sent[word_i - 1]
+        cur = sent.examples.at(word_i)
+        prev = sent.examples.at(word_i - 1)
         # If current or previous prediction is not correct
         if cur.gold_label != cur.pred_label or prev.gold_label != prev.pred_label:
             w.update_t(cur.gold_label - 1, prev.gold_label - 1, alpha)
             w.update_t(cur.pred_label - 1, prev.pred_label - 1, -alpha)
 
 @cython.cdivision(True)
-def update_weights_cs(list sent, Weights w, double alpha, int n_labels,
+def update_weights_cs(Sequence sent, Weights w, double alpha, int n_labels,
                    FeatMap feat_map):
     cdef:
         int word_i, i
@@ -133,7 +133,7 @@ def update_weights_cs(list sent, Weights w, double alpha, int n_labels,
 
     # Update emission features
     for word_i in range(len(sent)):
-        cur = sent[word_i]
+        cur = sent.examples[word_i]
         pred_cost = cur.cost[cur.pred_label - 1]
 
         if pred_cost > .0:
@@ -159,7 +159,7 @@ def update_weights_cs(list sent, Weights w, double alpha, int n_labels,
 
 
 #@cython.cdivision(True)
-cdef update_transition_cs(list sent, Weights w, double alpha, int n_labels):
+cdef update_transition_cs(Sequence sent, Weights w, double alpha, int n_labels):
     cdef:
         int word_i
         Example cur, prev
@@ -169,18 +169,18 @@ cdef update_transition_cs(list sent, Weights w, double alpha, int n_labels):
 
     # Transition from start state
     if len(sent) > 0:
-        cur = sent[0]
-        if cur.pred_cost() > 0:
-            w.update_t(n_labels, cur.gold_label - 1, alpha * cur.pred_cost())
-            w.update_t(n_labels, cur.pred_label - 1, -alpha * cur.pred_cost())
+        cur = sent.examples[0]
+        if cur.pred_cost > 0:
+            w.update_t(n_labels, cur.gold_label - 1, alpha * cur.pred_cost)
+            w.update_t(n_labels, cur.pred_label - 1, -alpha * cur.pred_cost)
 
 
     # Internal transitions
     for word_i in range(1, len(sent)):
-        cur = sent[word_i]
-        prev = sent[word_i - 1]
+        cur = sent.examples[word_i]
+        prev = sent.examples[word_i - 1]
 
-        bigram_pred_cost = cur.pred_cost() + prev.pred_cost()
+        bigram_pred_cost = cur.pred_cost + prev.pred_cost
 
 
         # If cost of current or previous prediction is not zero
@@ -208,52 +208,53 @@ cdef update_transition_cs(list sent, Weights w, double alpha, int n_labels):
 
 cpdef double avg_loss(list sents):
     cdef:
-        list sent
+        Sequence sent
         Example e
         double total_cost = 0
         int n = 0
 
     for sent in sents:
-        for e in sent:
+        for e in sent.examples:
             if e.pred_label > 0:
                 n += 1
                 total_cost += e.cost[e.pred_label - 1]
 
-    return total_cost / n
+    return total_cost / n if n > 0 else 0.0
 
 cpdef double accuracy(list sents):
     cdef:
-        list sent
+        Sequence sent
         Example e
         int n = 0, correct = 0
 
     for sent in sents:
-        for e in sent:
+        for e in sent.examples:
             if e.pred_label > 0:
                 n += 1
                 if e.cost[e.pred_label - 1] == 0.0:
                     correct += 1
 
-    return float(correct) / n
+    return float(correct) / n if n > 0 else 0.0
 
 @cython.wraparound(True)
-def viterbi(list sent, int n_labels, Weights w, FeatMap feat_map):
+def viterbi(Sequence sent, int n_labels, Weights w, FeatMap feat_map):
     """Returns best predicted sequence"""
-    cdef Example e
     cdef Feature feat
-    cdef int word_0, label_0, label, i
+    cdef int label_0, label, i
 
     # Allocate back pointers
-    cdef int[:, ::1] path = np.zeros((len(sent), n_labels), dtype=np.int32)*-1
+    cdef int[:, ::1] path = np.zeros((sent.examples.size(), n_labels), dtype=np.int32)*-1
 
     # Setup trellis for constrained inference
-    cdef double[:, ::1] trellis = np.zeros((len(sent), n_labels), dtype=np.float64)
-    for word_0, e in enumerate(sent):
+    cdef double[:, ::1] trellis = np.zeros((sent.examples.size(), n_labels), dtype=np.float64)
+    cdef int word_0 = 0
+    for e in sent.examples:
         if e.constraints.size() > 0:
             for label_0 in range(n_labels):
                 trellis[word_0, label_0] = -INFINITY
             for label in e.constraints:
                 trellis[word_0, label - 1] = 0
+        word_0 += 1
 
     # Fill in trellis and back pointers
     viterbi_path(sent, n_labels, w, trellis, path, feat_map)
@@ -264,13 +265,16 @@ def viterbi(list sent, int n_labels, Weights w, FeatMap feat_map):
         best_seq.append(path[i, <int> best_seq[-1]])
     best_seq = [label + 1 for label in reversed(best_seq)]
     
-    for e, pred_label in zip(sent, best_seq):
-        e.pred_label = pred_label
-    
+    cdef int pred_label
+    for i in range(sent.examples.size()):
+        pred_label = best_seq[i]
+        sent.examples[i].pred_label = pred_label
+        sent.examples[i].pred_cost = e.cost[pred_label - 1]
+
     return best_seq
 
 
-cdef viterbi_path(list seq, int n_labels, Weights w, double[:, ::1] trellis, int[:, ::1] path, FeatMap feat_map):
+cdef viterbi_path(Sequence seq, int n_labels, Weights w, double[:, ::1] trellis, int[:, ::1] path, FeatMap feat_map):
     cdef:
         double min_score
         double score
@@ -286,7 +290,7 @@ cdef viterbi_path(list seq, int n_labels, Weights w, double[:, ::1] trellis, int
         Feature feat
 
     for word_i in range(len(seq)):
-        cur = seq[word_i]
+        cur = seq.examples[word_i]
         # Current label
         for cur_label_0 in range(n_labels):
             if trellis[word_i, cur_label_0] == -INFINITY:
