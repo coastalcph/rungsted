@@ -60,6 +60,27 @@ cdef class Sequence(object):
             return "<Sequence empty>"
 
 
+    property gold_labels:
+        def __get__(self):
+            cdef Example e
+            return [e.gold_label for e in self.examples]
+
+
+    property pred_labels:
+        def __get__(self):
+            cdef Example e
+            return [e.pred_label for e in self.examples]
+
+    property ids:
+        def __get__(self):
+            cdef Example e
+            return [e.id_ for e in self.examples]
+
+
+
+
+
+
     def __dealloc__(self):
         cdef Example e
         for e in self.examples:

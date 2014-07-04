@@ -28,12 +28,8 @@ parser.add_argument('--predictions', '-p', help="File for outputting predictions
 parser.add_argument('--ignore', help="One-character prefix of namespaces to ignore", nargs='*', default=[])
 parser.add_argument('--quadratic', '-q', help="Combine features in these two namespace, identified by a one-character prefix of their name"
                                               "':' is a short-hand for all namespaces", nargs='*', default=[])
-parser.add_argument('--decay-exp', help="Learning rate decay exponent. Learning rate is (iteration no)^decay_exponent",
-                    default=0, type=float)
-parser.add_argument('--decay-delay', help="Delay decaying the learning rate for this many iterations",
-                    default=10, type=int)
 parser.add_argument('--shuffle', help="Shuffle examples after each iteration", action='store_true')
-parser.add_argument('--average', help="Average over all updates", action='store_true')
+parser.add_argument('--no-average', help="Do not average over all updates", action='store_true')
 parser.add_argument('--initial-model', '-i', help="Initial model from this file")
 parser.add_argument('--final-model', '-f', help="Save model here after training")
 parser.add_argument('--cost-sensitive', '--cs', help="Cost-sensitive weight updates", action='store_true')
@@ -99,11 +95,10 @@ if args.train:
     timers['train'].begin()
     epoch_msg = ""
     for epoch in range(1, args.passes+1):
-        learning_rate = 0.1 if epoch < args.decay_delay else epoch**args.decay_exp * 0.1
+        learning_rate = 0.1
         if args.shuffle:
             random.shuffle(train)
         for sent in train:
-            # viterbi(sent, n_labels, w, feat_map)
             vit.decode(sent)
             weight_updater(sent, w, learning_rate, n_labels, feat_map)
             w.incr_n_updates()
@@ -115,7 +110,7 @@ if args.train:
         print >>sys.stderr, "\r{}{}".format(epoch_msg, " "*72)
 
     timers['train'].end()
-    if args.average:
+    if not args.no_average:
         w.average_weights()
 
     print >>sys.stderr, "Training took {:.2f} secs. {} words/sec".format(timers['train'].elapsed(),
@@ -125,12 +120,14 @@ if args.train:
 if args.test:
     timers['test'].begin()
     with open(args.predictions or os.devnull, 'w') as out:
-        for sent in test:
-            # viterbi(sent, n_labels, w, feat_map)
+        labels_map = dict((i, label_str) for i, label_str in enumerate(test_labels))
+        for sent_i, sent in enumerate(test):
+            if sent_i > 0:
+                print >>out, ""
             vit.decode(sent)
-            # for example in sent:
-            #     print >>out, "{}\t{}\t{}".format(example.id_, example.gold_label, example.pred_label)
-            # print >>out, ""
+            for example_id, gold_label, pred_label in zip(sent.ids, sent.gold_labels, sent.pred_labels):
+                print >>out, "{}\t{}\t{}".format(example_id, labels_map[gold_label], labels_map[pred_label])
+
 
     timers['test'].end()
     logging.info("Accuracy: {:.3f}".format(accuracy(test)))
