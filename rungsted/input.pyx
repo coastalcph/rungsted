@@ -50,7 +50,6 @@ cdef class Sequence(object):
         cdef int n_constraints = sum([e.constraints.size() for e in self.examples])
 
 
-
         if self.examples.size() > 0:
             return "<Sequence ({} to {}) with {} tokens totalling " \
                    "{} features and {} constraints.>".format(self.examples.front().id_,
@@ -60,13 +59,14 @@ cdef class Sequence(object):
         else:
             return "<Sequence empty>"
 
+
     def __dealloc__(self):
         cdef Example e
         for e in self.examples:
             example_free(&e)
 
 
-cdef Dataset dataset_new(int n_labels, list quadratic_list, list ignore_list):
+cdef Dataset dataset_new(list quadratic_list, list ignore_list):
     cdef:
         vector[string] quadratic
         int * ignore
@@ -93,18 +93,15 @@ cdef Dataset dataset_new(int n_labels, list quadratic_list, list ignore_list):
         quadratic=quadratic,
         ignore=ignore,
         nnz=0,
-        n_labels=n_labels
     )
 
     return dataset
-
-cdef double pred_cost(Example example):
-    return example.cost[example.pred_label - 1]
 
 
 cdef Example example_new(Dataset dataset):
     cdef vector[Feature] features
     cdef vector[int] constraints
+    cdef vector[LabelCost] labels
 
     cdef Example example = Example(
         dataset=dataset,
@@ -112,40 +109,69 @@ cdef Example example_new(Dataset dataset):
         importance=1,
         pred_label=-1,
         gold_label=-1,
-        cost=<double *> malloc(sizeof(double) * dataset.n_labels),
+        labels=labels,
         features=features,
         constraints=constraints,
         pred_cost=1.0
     )
 
-    cdef int i
-    for i in range(dataset.n_labels):
-        example.cost[i] = 1.0
-
     return example
+
 
 cdef void example_free(Example * example):
     if example.id_ != NULL :
         free(example.id_)
-    if example.cost != NULL:
-        free(example.cost)
+
+
+cdef double example_cost(Example example, int label):
+    cdef LabelCost label_cost
+    for label_cost in example.labels:
+        if label_cost.label == label:
+            return label_cost.cost
+    return 1.0
 
 cdef inline void add_feature(Example * example, int index, double val):
     cdef Feature feat = Feature(index, val)
     example.features.push_back(feat)
 
-cdef int parse_header(char* header, Example * e) except -1:
+
+cdef LabelCost map_label(char *label_def, dict label_map):
     cdef:
-        int label, label_0
+        char *label_name
+        char label_name_fixed[1000]
+        int label = -1
+        double cost = 0.0
+
+    if strchr(label_def, ':'):
+        read = sscanf(label_def, "%s:%lf", &label_name_fixed, &cost)
+
+        if read != 2:
+            raise ValueError("Invalid label: {}".format(label))
+        label_name = label_name_fixed
+    else:
+        label_name = label_def
+
+    # Look-up the label and allocate a new one if not found
+    label = label_map.get(label_name, -1)
+    if label == -1:
+        label = len(label_map)
+        label_map[label_def] = label
+
+    return LabelCost(label=label, cost=cost)
+
+
+cdef int parse_header(char* header, dict label_map, Example * e, int audit) except -1:
+    cdef:
         char* header_elem = strsep(&header, " ")
-        double cost
+        LabelCost label_cost
 
     while header_elem != NULL:
         first_char = header_elem[0]
         if first_char == '?':
-            read = sscanf(header_elem + 1, "%i", &label)
-            if read == 1:
-                e.constraints.push_back(label)
+            label_cost = map_label(header_elem + 1, label_map)
+            # FIXME error checking
+            e.constraints.push_back(label_cost.label)
+
         elif first_char == '\'':
             e.id_ = strdup(&header_elem[1])
         elif isdigit(first_char):
@@ -154,38 +180,35 @@ cdef int parse_header(char* header, Example * e) except -1:
             #  - an importance weight, e.g. 0.75
             # Thus if the string contains a colon, it is a label, and
             # if it contains a dot but not colon, it is an importance weight.
-            if strchr(header_elem, ':') != NULL:
-                read = sscanf(header_elem, "%i:%lf", &label, &cost)
-                if read == 2:
-                    if 0 < label <= e.dataset.n_labels:
-                        e.cost[label-1] = cost
-                    else:
-                        raise ValueError("Invalid label: {}".format(label))
-                else:
-                    raise ValueError("Invalid label specification: {}".format(header_elem))
-            elif strchr(header_elem, '.') != NULL:
+            if strchr(header_elem, '.') != NULL and strchr(header_elem, ':') == NULL:
                 read = sscanf(header_elem, "%lf", &e.importance)
                 if read != 1:
                     raise ValueError("Invalid importance weight: {}".format(header_elem))
+                if audit:
+                    print "imp={}".format(e.importance),
             else:
-                read = sscanf(header_elem, "%i", &label)
-                if read == 1:
-                    if 0 < label <= e.dataset.n_labels:
-                        e.cost[label-1] = 0.0
-                    else:
-                        raise ValueError("Invalid label: {}".format(label))
-                else:
-                    raise ValueError("Invalid label specification: {}".format(header_elem))
+                label_cost = map_label(header_elem, label_map)
+                e.labels.push_back(label_cost)
+        else:
+            label_cost = map_label(header_elem, label_map)
+            e.labels.push_back(label_cost)
+
 
         header_elem = strsep(&header, " ")
 
-        # Set gold label if exists
-        for label_0 in range(e.dataset.n_labels):
-            if e.cost[label_0] == 0.0:
-                e.gold_label = label_0 + 1
-                break
+    if len(e.labels) == 1:
+        e.gold_label = e.labels[0].label
+
+    if audit:
+        for constraint in e.constraints:
+            print "?{}".format(constraint),
+        for label_cost in e.labels:
+            print "{}:{}".format(label_cost.label, label_cost.cost),
+        print "imp={}".format(e.importance),
+        print "'{}|".format(e.id_),
 
     return 0
+
 
 cdef double separate_and_parse_val(char* string_with_value) except -1:
     """Looks for a decimal value at the end of the string.
@@ -259,7 +282,7 @@ cdef int quadratic_combinations(Example * e, int[] ns_begin, char[] ns,
     return 0
 
 
-cdef int parse_features(char* feature_str, Example * e, FeatMap feat_map) except -1:
+cdef int parse_features(char* feature_str, Example * e, FeatMap feat_map, int audit) except -1:
     cdef:
         char ns[MAX_LEN]
         char * feature_begin[MAX_LEN]
@@ -312,6 +335,9 @@ cdef int parse_features(char* feature_str, Example * e, FeatMap feat_map) except
                     snprintf(ns_and_feature_name, MAX_FEAT_NAME_LEN, "%s^%s", cur_ns, feat_and_val)
                     feat_i = feat_map.feat_i(ns_and_feature_name)
 
+                    if audit:
+                        print "{}=>{}:{}".format(ns_and_feature_name, feat_i, cur_val),
+
                     if feat_i >= 0:
                         add_feature(e, feat_i, cur_val)
 
@@ -325,7 +351,7 @@ cdef int parse_features(char* feature_str, Example * e, FeatMap feat_map) except
 
     return 0
 
-def read_vw_seq(filename, n_labels, FeatMap feat_map, quadratic=[], ignore=[]):
+def read_vw_seq(filename, FeatMap feat_map, quadratic=[], ignore=[], labels=None, audit=False):
     cdef:
         char* fname
         FILE* cfile
@@ -340,10 +366,13 @@ def read_vw_seq(filename, n_labels, FeatMap feat_map, quadratic=[], ignore=[]):
         Dataset dataset
         Sequence seq
 
+    label_map = {}
+    if labels:
+        for i, label_name in enumerate(labels):
+            label_map[label_name] = i
 
-    dataset = dataset_new(n_labels, quadratic, ignore)
+    dataset = dataset_new(quadratic, ignore)
     seqs = []
-
 
     e = example_new(dataset)
     seq = Sequence()
@@ -371,15 +400,18 @@ def read_vw_seq(filename, n_labels, FeatMap feat_map, quadratic=[], ignore=[]):
                 raise ValueError("Missing | character in example")
 
             header = strndup(line, bar_pos - line)
-            parse_header(header, &e)
+            parse_header(header, label_map, &e, audit)
             free(header)
 
-            parse_features(bar_pos, &e, feat_map)
+            parse_features(bar_pos, &e, feat_map, audit)
 
             # Add constant feature
             add_feature(&e, feat_map.feat_i("^Constant"), 1)
 
             seq.examples.push_back(e)
+
+            if audit:
+                print ""
 
         else:
             # Empty line. Multiple empty lines after each other are ignored
@@ -389,4 +421,8 @@ def read_vw_seq(filename, n_labels, FeatMap feat_map, quadratic=[], ignore=[]):
 
     free(line)
 
-    return seqs
+    # Create label list from label map
+    rev_map = dict((v, k) for k, v in label_map.items())
+    labels = [rev_map[i] for i in range(len(rev_map))]
+
+    return seqs, labels

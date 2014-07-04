@@ -5,7 +5,6 @@ cdef struct dataset_s:
     vector[string] quadratic
     int * ignore
     int nnz
-    int n_labels
 
 ctypedef dataset_s Dataset
 
@@ -15,11 +14,17 @@ cdef struct s_feature:
 
 ctypedef s_feature Feature
 
+cdef struct label_cost_s:
+    int label
+    double cost
+
+ctypedef label_cost_s LabelCost
+
 cdef struct example_s:
     Dataset dataset
     char * id_
     double importance
-    double * cost
+    vector[LabelCost] labels
     vector[Feature] features
     vector[int] constraints
     int pred_label
@@ -28,8 +33,8 @@ cdef struct example_s:
 
 ctypedef example_s Example
 
+cdef double example_cost(Example example, int label)
+
 cdef class Sequence(object):
     cdef:
         vector[Example] examples
-
-cdef double pred_cost(Example example)

@@ -19,7 +19,7 @@ cdef class HashingFeatMap(FeatMap):
 
 cdef class DictFeatMap(FeatMap):
     cdef:
-        int n_labels
+        public int n_labels
         int next_i
         object feat2index
 

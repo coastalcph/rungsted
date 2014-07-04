@@ -9,7 +9,7 @@ import numpy as np
 cimport numpy as cnp
 from feat_map cimport HashingFeatMap, FeatMap
 
-from .input cimport Example, Feature, Sequence
+from .input cimport Example, Feature, Sequence, example_cost
 
 cdef extern from "math.h":
     float INFINITY
@@ -17,16 +17,6 @@ cdef extern from "math.h":
 cnp.import_array()
 
 cdef class Weights:
-    cpdef public double [:, ::1] t
-    cpdef public double [:, ::1] t_acc
-    cpdef public int [:, ::1] t_last_update
-
-    cpdef public double [::1] e
-    cpdef public double [::1] e_acc
-    cpdef public int [::1] e_last_update
-
-    cpdef public int n_updates
-
     def __init__(self, n_labels, n_e_feats):
         self.t = np.zeros((n_labels+1, n_labels), dtype=np.float64)
         self.t_acc = np.zeros_like(self.t, dtype=np.float64)
@@ -109,8 +99,8 @@ def update_weights(Sequence sent, Weights w, double alpha, int n_labels,
 
             # Transition from from initial state
             if word_i == 0:
-                w.update_t(n_labels, gold_label - 1, alpha)
-                w.update_t(n_labels, pred_label - 1, -alpha)
+                w.update_t(n_labels, gold_label, alpha)
+                w.update_t(n_labels, pred_label, -alpha)
 
     # Transition features
     for word_i in range(1, len(sent)):
@@ -118,92 +108,92 @@ def update_weights(Sequence sent, Weights w, double alpha, int n_labels,
         prev = sent.examples.at(word_i - 1)
         # If current or previous prediction is not correct
         if cur.gold_label != cur.pred_label or prev.gold_label != prev.pred_label:
-            w.update_t(cur.gold_label - 1, prev.gold_label - 1, alpha)
-            w.update_t(cur.pred_label - 1, prev.pred_label - 1, -alpha)
+            w.update_t(cur.gold_label, prev.gold_label, alpha)
+            w.update_t(cur.pred_label, prev.pred_label, -alpha)
 
-@cython.cdivision(True)
-def update_weights_cs(Sequence sent, Weights w, double alpha, int n_labels,
-                   FeatMap feat_map):
-    cdef:
-        int word_i, i
-        Example cur, prev
-        int label_0
-        Feature feat
-        double pred_cost, cost, total_inv_cost
-
-    # Update emission features
-    for word_i in range(len(sent)):
-        cur = sent.examples[word_i]
-        pred_cost = cur.cost[cur.pred_label - 1]
-
-        if pred_cost > .0:
-            # Negative update
-            for feat in cur.features:
-                w.update_e(feat_map.feat_i_for_label(feat.index, cur.pred_label), -feat.value * alpha * pred_cost)
-
-            # Sum the cost of advantages
-            total_inv_cost = 0
-            for label_0 in range(n_labels):
-                if cur.cost[label_0] < pred_cost:
-                    total_inv_cost += (pred_cost - cur.cost[label_0])
-
-            # Perform positive update, dividing the update between all better (lower cost) alternatives.
-            # The update is inversely proportional to the cost of the label.
-            for label_0 in range(n_labels):
-                if cur.cost[label_0] < pred_cost:
-                    for feat in cur.features:
-                        w.update_e(feat_map.feat_i_for_label(feat.index, label_0 + 1),
-                                   feat.value * alpha * ((pred_cost - cur.cost[label_0]) / total_inv_cost))
-
-    update_transition_cs(sent, w, alpha, n_labels)
-
-
-#@cython.cdivision(True)
-cdef update_transition_cs(Sequence sent, Weights w, double alpha, int n_labels):
-    cdef:
-        int word_i
-        Example cur, prev
-        double bigram_pred_cost, bigram_cost, total_bigram_inv_cost, this_bigram_factor
-        int label_cur_0, label_prev_0
-
-
-    # Transition from start state
-    if len(sent) > 0:
-        cur = sent.examples[0]
-        if cur.pred_cost > 0:
-            w.update_t(n_labels, cur.gold_label - 1, alpha * cur.pred_cost)
-            w.update_t(n_labels, cur.pred_label - 1, -alpha * cur.pred_cost)
-
-
-    # Internal transitions
-    for word_i in range(1, len(sent)):
-        cur = sent.examples[word_i]
-        prev = sent.examples[word_i - 1]
-
-        bigram_pred_cost = cur.pred_cost + prev.pred_cost
-
-
-        # If cost of current or previous prediction is not zero
-        if bigram_pred_cost > 0:
-            # Negative update
-            w.update_t(cur.pred_label - 1, prev.pred_label - 1, -alpha * bigram_pred_cost)
-
-            # Sum the cost of advantages
-            total_bigram_inv_cost = 0
-            for label_cur_0 in range(n_labels):
-                for label_prev_0 in range(n_labels):
-                    bigram_cost = cur.cost[label_cur_0] + prev.cost[label_prev_0]
-                    if bigram_cost < bigram_pred_cost:
-                        total_bigram_inv_cost += (bigram_pred_cost - bigram_cost)
-
-            # Perform positive update
-            for label_cur_0 in range(n_labels):
-                for label_prev_0 in range(n_labels):
-                    bigram_cost = cur.cost[label_cur_0] + prev.cost[label_prev_0]
-                    if bigram_cost < bigram_pred_cost:
-                        this_bigram_factor = (bigram_pred_cost - bigram_cost) / total_bigram_inv_cost
-                        w.update_t(label_cur_0, label_prev_0,
-                                   alpha * this_bigram_factor * bigram_pred_cost)
+# @cython.cdivision(True)
+# def update_weights_cs(Sequence sent, Weights w, double alpha, int n_labels,
+#                    FeatMap feat_map):
+#     cdef:
+#         int word_i, i
+#         Example cur, prev
+#         int label_0
+#         Feature feat
+#         double pred_cost, cost, total_inv_cost
+#
+#     # Update emission features
+#     for word_i in range(len(sent)):
+#         cur = sent.examples[word_i]
+#         pred_cost = cur.cost[cur.pred_label - 1]
+#
+#         if pred_cost > .0:
+#             # Negative update
+#             for feat in cur.features:
+#                 w.update_e(feat_map.feat_i_for_label(feat.index, cur.pred_label), -feat.value * alpha * pred_cost)
+#
+#             # Sum the cost of advantages
+#             total_inv_cost = 0
+#             for label_0 in range(n_labels):
+#                 if cur.cost[label_0] < pred_cost:
+#                     total_inv_cost += (pred_cost - cur.cost[label_0])
+#
+#             # Perform positive update, dividing the update between all better (lower cost) alternatives.
+#             # The update is inversely proportional to the cost of the label.
+#             for label_0 in range(n_labels):
+#                 if cur.cost[label_0] < pred_cost:
+#                     for feat in cur.features:
+#                         w.update_e(feat_map.feat_i_for_label(feat.index, label_0 + 1),
+#                                    feat.value * alpha * ((pred_cost - cur.cost[label_0]) / total_inv_cost))
+#
+#     update_transition_cs(sent, w, alpha, n_labels)
+#
+#
+# #@cython.cdivision(True)
+# cdef update_transition_cs(Sequence sent, Weights w, double alpha, int n_labels):
+#     cdef:
+#         int word_i
+#         Example cur, prev
+#         double bigram_pred_cost, bigram_cost, total_bigram_inv_cost, this_bigram_factor
+#         int label_cur_0, label_prev_0
+#
+#
+#     # Transition from start state
+#     if len(sent) > 0:
+#         cur = sent.examples[0]
+#         if cur.pred_cost > 0:
+#             w.update_t(n_labels, cur.gold_label - 1, alpha * cur.pred_cost)
+#             w.update_t(n_labels, cur.pred_label - 1, -alpha * cur.pred_cost)
+#
+#
+#     # Internal transitions
+#     for word_i in range(1, len(sent)):
+#         cur = sent.examples[word_i]
+#         prev = sent.examples[word_i - 1]
+#
+#         bigram_pred_cost = cur.pred_cost + prev.pred_cost
+#
+#
+#         # If cost of current or previous prediction is not zero
+#         if bigram_pred_cost > 0:
+#             # Negative update
+#             w.update_t(cur.pred_label - 1, prev.pred_label - 1, -alpha * bigram_pred_cost)
+#
+#             # Sum the cost of advantages
+#             total_bigram_inv_cost = 0
+#             for label_cur_0 in range(n_labels):
+#                 for label_prev_0 in range(n_labels):
+#                     bigram_cost = cur.cost[label_cur_0] + prev.cost[label_prev_0]
+#                     if bigram_cost < bigram_pred_cost:
+#                         total_bigram_inv_cost += (bigram_pred_cost - bigram_cost)
+#
+#             # Perform positive update
+#             for label_cur_0 in range(n_labels):
+#                 for label_prev_0 in range(n_labels):
+#                     bigram_cost = cur.cost[label_cur_0] + prev.cost[label_prev_0]
+#                     if bigram_cost < bigram_pred_cost:
+#                         this_bigram_factor = (bigram_pred_cost - bigram_cost) / total_bigram_inv_cost
+#                         w.update_t(label_cur_0, label_prev_0,
+#                                    alpha * this_bigram_factor * bigram_pred_cost)
 
 
 cpdef double avg_loss(list sents):
@@ -215,9 +205,9 @@ cpdef double avg_loss(list sents):
 
     for sent in sents:
         for e in sent.examples:
-            if e.pred_label > 0:
+            if e.pred_label >= 0:
                 n += 1
-                total_cost += e.cost[e.pred_label - 1]
+                total_cost += example_cost(e, e.pred_label)
 
     return total_cost / n if n > 0 else 0.0
 
@@ -229,9 +219,9 @@ cpdef double accuracy(list sents):
 
     for sent in sents:
         for e in sent.examples:
-            if e.pred_label > 0:
+            if e.pred_label >= 0:
                 n += 1
-                if e.cost[e.pred_label - 1] == 0.0:
+                if example_cost(e, e.pred_label) == 0.0:
                     correct += 1
 
     return float(correct) / n if n > 0 else 0.0
@@ -240,21 +230,21 @@ cpdef double accuracy(list sents):
 def viterbi(Sequence sent, int n_labels, Weights w, FeatMap feat_map):
     """Returns best predicted sequence"""
     cdef Feature feat
-    cdef int label_0, label, i
+    cdef int label, i
 
     # Allocate back pointers
     cdef int[:, ::1] path = np.zeros((sent.examples.size(), n_labels), dtype=np.int32)*-1
 
     # Setup trellis for constrained inference
     cdef double[:, ::1] trellis = np.zeros((sent.examples.size(), n_labels), dtype=np.float64)
-    cdef int word_0 = 0
+    cdef int word = 0
     for e in sent.examples:
         if e.constraints.size() > 0:
-            for label_0 in range(n_labels):
-                trellis[word_0, label_0] = -INFINITY
+            for label in range(n_labels):
+                trellis[word, label] = -INFINITY
             for label in e.constraints:
-                trellis[word_0, label - 1] = 0
-        word_0 += 1
+                trellis[word, label] = 0
+        word += 1
 
     # Fill in trellis and back pointers
     viterbi_path(sent, n_labels, w, trellis, path, feat_map)
@@ -263,13 +253,13 @@ def viterbi(Sequence sent, int n_labels, Weights w, FeatMap feat_map):
     best_seq = [np.asarray(trellis)[-1].argmax()]
     for i in reversed(range(1, len(path))):
         best_seq.append(path[i, <int> best_seq[-1]])
-    best_seq = [label + 1 for label in reversed(best_seq)]
-    
+    best_seq = [label for label in reversed(best_seq)]
+
     cdef int pred_label
     for i in range(sent.examples.size()):
         pred_label = best_seq[i]
         sent.examples[i].pred_label = pred_label
-        sent.examples[i].pred_cost = e.cost[pred_label - 1]
+        sent.examples[i].pred_cost = example_cost(e, pred_label)
 
     return best_seq
 
@@ -281,8 +271,7 @@ cdef void viterbi_path(Sequence seq, int n_labels, Weights w, double[:, ::1] tre
         int min_prev
         double e_score
 
-        # Zero-based labels
-        int cur_label_0, prev_label_0
+        int cur_label, prev_label
         int  feat_i, i, j
         int word_i = 0
         double feat_val
@@ -292,8 +281,8 @@ cdef void viterbi_path(Sequence seq, int n_labels, Weights w, double[:, ::1] tre
     for word_i in range(seq.examples.size()):
         cur = seq.examples[word_i]
         # Current label
-        for cur_label_0 in range(n_labels):
-            if trellis[word_i, cur_label_0] == -INFINITY:
+        for cur_label in range(n_labels):
+            if trellis[word_i, cur_label] == -INFINITY:
                 continue
 
             min_score = -1E9
@@ -302,20 +291,21 @@ cdef void viterbi_path(Sequence seq, int n_labels, Weights w, double[:, ::1] tre
             # Emission score
             e_score = 0
             for feat in cur.features:
-                feat_i = feat_map.feat_i_for_label(feat.index, cur_label_0 + 1)
+                feat_i = feat_map.feat_i_for_label(feat.index, cur_label)
                 e_score += w.e[feat_i] * feat.value
 
             # Previous label
+            # Transitions from start state
             if word_i == 0:
-                trellis[word_i, cur_label_0] = e_score + w.t[n_labels, cur_label_0]
-                path[word_i, cur_label_0] = cur_label_0
-
+                trellis[word_i, cur_label] = e_score + w.t[n_labels, cur_label]
+                path[word_i, cur_label] = cur_label
+            # Transitions from the rest of the states
             else:
-                for prev_label_0 in range(n_labels):
-                    score = e_score + w.t[cur_label_0, prev_label_0] + trellis[word_i-1, prev_label_0]
+                for prev_label in range(n_labels):
+                    score = e_score + w.t[cur_label, prev_label] + trellis[word_i-1, prev_label]
 
                     if score >= min_score:
                         min_score = score
-                        min_prev = prev_label_0
-                trellis[word_i, cur_label_0] = min_score
-                path[word_i, cur_label_0] = min_prev
+                        min_prev = prev_label
+                trellis[word_i, cur_label] = min_score
+                path[word_i, cur_label] = min_prev

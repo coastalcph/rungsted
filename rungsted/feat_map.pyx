@@ -125,9 +125,8 @@ cdef class DictFeatMap(FeatMap):
             self.next_i = len(value)
 
 
-    def __init__(self, int n_labels):
+    def __init__(self):
         self.next_i = 0
-        self.n_labels = n_labels
         self.feat2index = {}
 
     cdef int32_t feat_i(self, char * feat):
@@ -143,7 +142,7 @@ cdef class DictFeatMap(FeatMap):
 
     cdef int32_t feat_i_for_label(self, uint32_t feat_i, uint32_t label) nogil:
         # The weight weight has `n_labels` sections, each with `next_i` entries
-        return self.next_i * (label - 1) + feat_i
+        return self.next_i * label + feat_i
 
     cpdef int32_t n_feats(self):
         return self.next_i * self.n_labels

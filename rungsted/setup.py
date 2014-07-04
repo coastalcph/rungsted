@@ -19,6 +19,8 @@ setup(
                 extra_compile_args=extra_compile_args, language='c++'),
       Extension('input', sources=['input.pyx'],
                 extra_compile_args=extra_compile_args, language='c++'),
+      Extension('decoding', sources=['decoding.pyx'],
+                extra_compile_args=extra_compile_args, language='c++'),
       Extension('feat_map', sources=['feat_map.pyx',
                                     'MurmurHash3.cpp'],
                 extra_compile_args=extra_compile_args, language='c++')
