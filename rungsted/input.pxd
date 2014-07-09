@@ -11,6 +11,7 @@ ctypedef dataset_s Dataset
 cdef struct s_feature:
     int index
     double value
+    int active
 
 ctypedef s_feature Feature
 

@@ -3,6 +3,7 @@ from libc.stdint cimport uint32_t, int32_t
 cdef class FeatMap(object):
     cdef:
         int frozen
+        int next_i
 
     cdef int32_t feat_i(self, char * feat)
     cdef int32_t feat_i_for_label(self, uint32_t feat_i, uint32_t label) nogil
@@ -20,7 +21,6 @@ cdef class HashingFeatMap(FeatMap):
 cdef class DictFeatMap(FeatMap):
     cdef:
         public int n_labels
-        int next_i
         object feat2index
 
 

@@ -152,7 +152,7 @@ cdef double example_cost(Example example, int label):
     return 1.0
 
 cdef inline void add_feature(Example * example, int index, double val):
-    cdef Feature feat = Feature(index, val)
+    cdef Feature feat = Feature(index, val, 1)
     example.features.push_back(feat)
 
 
@@ -217,7 +217,9 @@ cdef int parse_header(char* header, dict label_map, Example * e, int audit) exce
 
         header_elem = strsep(&header, " ")
 
-    if len(e.labels) == 1:
+    if len(e.labels) == 0:
+        raise ValueError("No label for example")
+    else:
         e.gold_label = e.labels[0].label
 
     if audit:
