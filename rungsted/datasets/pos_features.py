@@ -58,3 +58,37 @@ def honnibal13(words, cpos_tags, i):
         add('>>w', next2)
 
     return feats
+
+def honnibal13_groups(words, cpos_tags, i):
+    feats = []
+    def add(name, group, *args):
+        feat_str = u"{}={}".format(name, u"+".join(args))
+        if group:
+            feat_str += u"@{}".format(group)
+
+        feats.append(feat_str)
+
+    norm = normalize_word(words[i].lower())
+    add('w', norm, norm)
+    add('pref1', None, norm[0])
+    add('suf3', None, norm[-3:])
+
+    if i > 0:
+        prev = normalize_word(words[i-1].lower())
+        add('<w', prev, prev)
+        add('<suf3', None, prev[-3:])
+
+    if i > 1:
+        prev2 = normalize_word(words[i-2].lower())
+        add('<<w', prev2, prev2)
+
+    if i < (len(words)-1):
+        next = normalize_word(words[i+1].lower())
+        add('>w', next, next)
+        add('>suf3', None, next[-3:])
+    #
+    if i < (len(words)-2):
+        next2 = normalize_word(words[i+2].lower())
+        add('>>w', next2, next2)
+
+    return feats

@@ -14,7 +14,7 @@ Options:
 import codecs
 from collections import defaultdict
 from docopt import docopt
-from pos_features import taskar12, honnibal13
+from pos_features import taskar12, honnibal13, honnibal13_groups
 
 if __name__ == '__main__':
     args = docopt(__doc__)
@@ -24,7 +24,8 @@ if __name__ == '__main__':
 
     features_for_token = {
         'taskar12': taskar12,
-        'honnibal13': honnibal13
+        'honnibal13': honnibal13,
+        'honnibal13-groups': honnibal13_groups
     }[args['--feature-set']]
 
     def normalize_word(word):

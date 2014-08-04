@@ -1,7 +1,7 @@
 #cython: boundscheck=False
 #cython: nonecheck=False
 #cython: wraparound=False
-#cython: profile=True
+#cython: profile=False
 
 from libc.stdio cimport *
 from libc.stdint cimport uint32_t, int32_t, int64_t, uint64_t

@@ -1,7 +1,4 @@
-#cython: boundscheck=False
-#cython: nonecheck=False
-#cython: wraparound=False
-#cython: profile=True
+#cython: profile=False
 
 from libc.stdio cimport *
 import numpy as np
@@ -15,7 +12,7 @@ cdef extern from "math.h":
 cnp.import_array()
 
 cdef class WeightVector:
-    def __init__(self, dims, ada_grad=True):
+    def __init__(self, dims, ada_grad=True, w=None):
         if isinstance(dims, int):
             self.n = dims
             self.dims = (dims,)
@@ -24,8 +21,13 @@ cdef class WeightVector:
             self.dims = dims
             self.shape0 = dims[0]
 
+        if w is None:
+            self.w = np.zeros(self.n, dtype=np.float64)
+        else:
+            assert w.size == self.n
+            self.w = w
+
         self.ada_grad = int(ada_grad)
-        self.w = np.zeros(self.n, dtype=np.float64)
         self.acc = np.zeros_like(self.w, dtype=np.float64)
         self.adagrad_squares = np.ones_like(self.w, dtype=np.float64)
         self.last_update = np.zeros_like(self.w, dtype=np.int32)
@@ -100,3 +102,6 @@ cdef class WeightVector:
                  adagrad_squares=self.adagrad_squares,
                  last_update=self.last_update,
                  dims=self.dims)
+
+    def copy(self):
+        return WeightVector(self.dims, self.ada_grad, np.asarray(self.w).copy())

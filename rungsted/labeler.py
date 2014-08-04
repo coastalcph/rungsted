@@ -1,6 +1,7 @@
 # coding: utf-8
 import argparse
 from collections import defaultdict
+import copy
 import json
 import logging
 import os
@@ -10,11 +11,12 @@ import numpy as np
 import sys
 from os.path import exists, join
 import time
-from decoding import Viterbi
-# from decoding_pd import Viterbi
+
+from decoding import Viterbi as ViterbiStd
+from decoding_pd import Viterbi as ViterbiPd
 from feat_map import HashingFeatMap, DictFeatMap
 
-from input import read_vw_seq
+from input import read_vw_seq, count_group_sizes, dropout_groups
 from timer import Timer
 from struct_perceptron import avg_loss, accuracy, update_weights, drop_out
 from weights import WeightVector
@@ -44,6 +46,8 @@ parser.add_argument('--audit', help="Print the interpretation of the input files
 parser.add_argument('--name', help="Identify this invocation by NAME (use in conjunction with --append-test).")
 parser.add_argument('--labels', help="Read the set of labels from this file.")
 parser.add_argument('--drop-out', help="Regularize by randomly removing features (with probability 0.1).", action='store_true')
+parser.add_argument('--decoder', '-d', help="Use this decoder to find the best sequence given the constraints",
+                    choices=('viterbi', 'viterbi_pd'), default='viterbi')
 
 
 args = parser.parse_args()
@@ -102,23 +106,30 @@ if not args.initial_model:
 
 logging.info("Weight vector sizes. Transition={}. Emission={}".format(wt.dims, we.dims))
 
+# Counting group sizes
+if args.train and args.drop_out:
+    logging.info("Counting group sizes")
+    group_sizes = count_group_sizes(train)
+else:
+    group_sizes = None
 n_updates = 0
 
-vit = Viterbi(n_labels, wt, we, feat_map)
+Viterbi = ViterbiStd if args.decoder == 'viterbi' else ViterbiPd
 
-# Training loop
-if args.train:
+
+
+def do_train(transition, emission):
+    vit = Viterbi(n_labels, transition, emission, feat_map)
+
     timers['train'].begin()
-    epoch_msg = ""
+    n_updates = 0
     for epoch in range(1, args.passes+1):
         for sent in train:
-            if args.drop_out:
-                drop_out(sent)
             vit.decode(sent)
-            weight_updater(sent, wt, we, 0.1, n_labels, feat_map)
+            weight_updater(sent, transition, emission, 0.1, n_labels, feat_map)
             n_updates += 1
-            wt.n_updates = n_updates
-            we.n_updates = n_updates
+            transition.n_updates = n_updates
+            emission.n_updates = n_updates
 
             if n_updates % 1000 == 0:
                 print >>sys.stderr, '\r[{}] {}k sentences total'.format(epoch, n_updates / 1000),
@@ -128,14 +139,15 @@ if args.train:
 
     timers['train'].end()
     if args.average:
-        wt.average()
-        we.average()
+        transition.average()
+        emission.average()
 
+    tokens_trained = epoch * sum(len(seq) for seq in train)
     print >>sys.stderr, "Training took {:.2f} secs. {} words/sec".format(timers['train'].elapsed(),
-                                                                         epoch*int(sum(len(seq) for seq in train) / timers['train'].elapsed()))
+                                                                         int(tokens_trained / timers['train'].elapsed()))
+def do_test(transition, emission):
+    vit = Viterbi(n_labels, transition, emission, feat_map)
 
-# Testing
-if args.test:
     timers['test'].begin()
     with open(args.predictions or os.devnull, 'w') as out:
         labels_map = dict((i, label_str) for i, label_str in enumerate(test_labels))
@@ -159,6 +171,31 @@ if args.test:
             json.dump(result, result_file)
             print >>result_file, ""
 
+
+# Training
+if args.train:
+    if args.drop_out:
+        wt_total = np.zeros_like(wt.w)
+        we_total = np.zeros_like(we.w)
+        for i in range(25):
+            dropout_groups(train, group_sizes)
+            wt_round = wt.copy()
+            we_round = we.copy()
+
+            do_train(wt_round, we_round)
+            we_total += we_round.w
+            wt_total += wt_round.w
+
+        wt = WeightVector(wt.dims, w=wt_total)
+        we = WeightVector(we.dims, w=we_total)
+
+    else:
+        do_train(wt, we)
+
+
+# Testing
+if args.test:
+    do_test(wt, we)
 
 # Save model
 if args.final_model:

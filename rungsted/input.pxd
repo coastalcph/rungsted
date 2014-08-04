@@ -1,3 +1,5 @@
+from libc.stdint cimport uint8_t
+
 from libcpp.vector cimport vector
 from libcpp.string cimport string
 
@@ -5,6 +7,7 @@ cdef struct dataset_s:
     vector[string] quadratic
     int * ignore
     int nnz
+    uint8_t [:, ::1] combos
 
 ctypedef dataset_s Dataset
 
@@ -12,6 +15,7 @@ cdef struct s_feature:
     int index
     double value
     int active
+    int group
 
 ctypedef s_feature Feature
 

@@ -9,7 +9,7 @@ from distutils.command.build_clib import build_clib
 # https://github.com/cython/cython/wiki/enhancements-distutils_preprocessing
 
 
-extra_compile_args=['-Wno-deprecated', '-Wno-unused-function', '-Wno-#warnings', '-Wno-deprecated-writable-strings']
+extra_compile_args=['-Wno-deprecated', '-Wno-unused-function', '-Wno-#warnings', '-Wno-deprecated-writable-strings', '-std=c++11']
 
 setup(
   name='Structured perceptron',

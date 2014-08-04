@@ -1,13 +1,12 @@
 import time
 
-
 class Timer(object):
     def begin(self):
-        self.begin = time.time()
+        self._begin = time.time()
 
     def end(self):
-        self.end = time.time()
+        self._end = time.time()
 
     def elapsed(self):
-        return self.end - self.begin
+        return self._end - self._begin
 
