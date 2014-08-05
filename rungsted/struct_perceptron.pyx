@@ -64,14 +64,14 @@ def update_weights(Sequence sent, WeightVector transition, WeightVector emission
                     print "below zero -- error", new_feat_i, feat.index, gold_label
 
                 emission.update(feat_map.feat_i_for_label(feat.index, gold_label),
-                           feat.value * alpha)
+                           feat.value * alpha * cur.importance)
                 emission.update(feat_map.feat_i_for_label(feat.index, pred_label),
-                           -feat.value * alpha)
+                           -feat.value * alpha * cur.importance)
 
             # Transition from from initial state
             if word_i == 0:
-                transition.update2d(n_labels, gold_label, alpha)
-                transition.update2d(n_labels, pred_label, -alpha)
+                transition.update2d(n_labels, gold_label, alpha * cur.importance)
+                transition.update2d(n_labels, pred_label, -alpha * cur.importance)
 
     # Transition features
     for word_i in range(1, len(sent)):
@@ -79,8 +79,8 @@ def update_weights(Sequence sent, WeightVector transition, WeightVector emission
         prev = sent.examples.at(word_i - 1)
         # If current or previous prediction is not correct
         if cur.gold_label != cur.pred_label or prev.gold_label != prev.pred_label:
-            transition.update2d(cur.gold_label, prev.gold_label, alpha)
-            transition.update2d(cur.pred_label, prev.pred_label, -alpha)
+            transition.update2d(cur.gold_label, prev.gold_label, alpha * cur.importance)
+            transition.update2d(cur.pred_label, prev.pred_label, -alpha * cur.importance)
 
 
 cpdef double avg_loss(list sents):
