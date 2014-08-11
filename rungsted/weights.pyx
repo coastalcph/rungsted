@@ -2,6 +2,7 @@
 #cython: nonecheck=False
 #cython: wraparound=False
 #cython: profile=False
+#cython: cdivision=True
 
 from libc.stdio cimport *
 import numpy as np
@@ -36,8 +37,6 @@ cdef class WeightVector:
         self.last_update = np.zeros_like(self.w, dtype=np.int32)
         self.active = np.ones_like(self.w, dtype=np.float64)
 
-        self.n_updates_mean = self.w.shape[0]
-
     def average(self):
         w_copy = np.asarray(self.w)
         acc_copy = np.asarray(self.acc)
@@ -46,6 +45,23 @@ cdef class WeightVector:
         acc_copy += w_copy * (self.n_updates - last_update_copy)
         w_copy = acc_copy / self.n_updates
         self.w = w_copy
+
+    cdef void _update_running_mean(self, double old_val, double new_val):
+        # Keep running mean and variance using a variant of Welford's algorithm.
+        # This function substitutes `old_val` for `new_val` in the set of
+        # numbers the mean and variance are computed over.
+        delta = new_val - old_val
+        d_old = old_val - self.mean
+        self.mean += delta / self.n
+        d_new = new_val - self.mean
+        self.m2 += delta * (d_old + d_new)
+
+    cdef void _update_ada_grad(self, int feat_i, double val):
+        cdef double learning_rate = 1.0
+        # print feat_i, self.adagrad_squares[feat_i], sqrt(self.adagrad_squares[feat_i])
+        val *= (learning_rate / sqrt(self.adagrad_squares[feat_i]))
+        self.adagrad_squares[feat_i] += val*val
+
 
     cpdef update(self, int feat_i, double val):
         if feat_i < 0:
@@ -61,28 +77,16 @@ cdef class WeightVector:
         self.last_update[feat_i] = self.n_updates
         self.acc[feat_i] += (missed_updates + 1) * self.w[feat_i]
 
-        # New update
-        cdef double learning_rate = 1.0
+        self._update_running_mean(self.w[feat_i], self.w[feat_i] + val)
         if self.ada_grad:
-            # print feat_i, self.adagrad_squares[feat_i], sqrt(self.adagrad_squares[feat_i])
-            val *= (learning_rate / sqrt(self.adagrad_squares[feat_i]))
-            self.adagrad_squares[feat_i] += val*val
+            self._update_ada_grad(feat_i, val)
+
+        # New update
         self.acc[feat_i] += val
         self.w[feat_i] += val
 
-        # Keep running mean (Welford's algorithm)
-        self.n_updates_mean += 1
-        cdef double delta = val - self.mean
-
-        self.mean += delta / float(self.n_updates_mean)
-        self.m2 += delta * (val - self.mean)
-
-
     cpdef double variance(self):
-        if self.n_updates_mean > 1:
-            return self.m2 / float(self.n_updates_mean)
-        else:
-            return 0
+        return self.m2 / float(self.n)
 
     cpdef double stddev(self):
         return sqrt(self.variance())

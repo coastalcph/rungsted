@@ -7,7 +7,7 @@ from input cimport Example, Sequence
 from weights cimport WeightVector
 
 import numpy as np
-cimport numpy as np
+# cimport numpy as np
 
 from libc.stdlib cimport rand
 cdef extern from "limits.h":
@@ -122,14 +122,14 @@ cdef class AdversialCorruption(object):
             int i, j, base_feat_i, label, feat_i
             double w_cut
             int threshold_int = int((1.0 - self.drop_pct) * float(INT_MAX))
+            # int inactive = 0, total = 0
 
         w_cut = abs(emission.mean) + abs(emission.stddev())
-        w_np = np.array(emission.w)
-        w_cut = abs(w_np.mean()) + abs(w_np.std())
 
-        if rand() > (0.99 * INT_MAX):
-            print "mean     {} vs {}, diff = {}".format(emission.mean, w_np.mean(), abs(emission.mean-w_np.mean()))
-            print "variance {} vs {}, diff = {}".format(emission.variance(), w_np.var(), abs(emission.variance()-w_np.var()))
+        # if rand() > (0.99 * INT_MAX):
+            # print "mean     {}  variance {}".format(emission.mean, emission.variance())
+            # print "mean     {} vs {}, diff = {}".format(emission.mean, w_np.mean(), abs(emission.mean-w_np.mean()))
+            # print "variance {} vs {}, diff = {}".format(emission.variance(), w_np.var(ddof=1), abs(emission.variance() - w_np.var()))
 
         for i in range(sent.examples.size()):
             example = &sent.examples[i]
@@ -137,7 +137,9 @@ cdef class AdversialCorruption(object):
                 base_feat_i = (&example.features[j]).index
                 for label in range(self.n_labels):
                     feat_i = self.feat_map.feat_i_for_label(base_feat_i, label)
+                    # total += 1
                     if rand() > threshold_int and abs(emission.w[feat_i]) > w_cut:
+                        # inactive += 1
                         emission.active[feat_i] = 0
                     else:
                         emission.active[feat_i] = 1
@@ -146,12 +148,15 @@ cdef class AdversialCorruption(object):
         w_cut = abs(transition.mean) + abs(transition.stddev())
 
         for i in range(transition.active.shape[0]):
+            # total += 1
             if rand() > threshold_int and abs(transition.w[i]) > w_cut:
+                # inactive += 1
                 transition.active[i] = 0
             else:
                 transition.active[i] = 1
 
-        # print "inactive/total = {}/{} = {}".format(inactive, total, inactive/float(total))
+        # if rand() > (0.99 * INT_MAX):
+        #     print "inactive/total = {}/{} = {}".format(inactive, total, inactive/float(total))
 
 
 def inverse_zipfian_sampler(n_samples, s=3):

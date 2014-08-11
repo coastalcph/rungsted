@@ -13,8 +13,6 @@ cdef class WeightVector:
         public int [::1] last_update
         public double [::1] active
 
-
-        public long n_updates_mean
         public double mean
         public double m2
 
@@ -29,3 +27,5 @@ cdef class WeightVector:
     cdef double score(self, Example *example, int label, FeatMap feat_map)
     cpdef double variance(self)
     cpdef double stddev(self)
+    cdef void _update_running_mean(self, double old_val, double new_val)
+    cdef void _update_ada_grad(self, int feat_i, double val)
