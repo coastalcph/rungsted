@@ -278,7 +278,6 @@ cdef int parse_header(string header, dict label_map, Example * e, int audit) exc
 
     for token in tokens:
         if token[0] == '?':
-            print "is qmark token", token.substr(1)
             label_cost = map_label(token.substr(1), label_map)
             e.constraints.push_back(label_cost.label)
         elif token[0] == '\'':
