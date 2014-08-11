@@ -25,6 +25,8 @@ Extension('weights', sources=['weights.pyx'],
                 extra_compile_args=extra_compile_args, language='c++'),
       Extension('decoding_pd', sources=['decoding_pd.pyx'],
                 extra_compile_args=extra_compile_args, language='c++'),
+      Extension('corruption', sources=['corruption.pyx'],
+                extra_compile_args=extra_compile_args, language='c++'),
       Extension('feat_map', sources=['feat_map.pyx',
                                     'MurmurHash3.cpp'],
                 extra_compile_args=extra_compile_args, language='c++')

@@ -17,18 +17,29 @@ from libc.stdlib cimport rand
 cdef extern from "limits.h":
     int INT_MAX
 
+def binomial_drop_out(Sequence sent, WeightVector emission, WeightVector transition, FeatMap feat_map, int n_labels, float drop_pct):
+    cdef:
+        Example *example
+        float rand_num
+        int i, j, label
+        int base_feat_i, feat_i
+        int threshold_int = int((1.0 - drop_pct) * float(INT_MAX))
 
-
-def drop_out(Sequence sent):
-    cdef Feature *feat
-    cdef Example *example
-    cdef float rand_num
+    # Do a sparse drop-out of the emissions features
     for i in range(sent.examples.size()):
         example = &sent.examples[i]
         for j in range(example.features.size()):
-            rand_num = rand() / float(INT_MAX)
-            feat = &example.features[j]
-            feat.active = 1 if rand_num < 0.9 else 0
+            base_feat_i = (&example.features[j]).index
+            for label in range(n_labels):
+                feat_i = feat_map.feat_i_for_label(base_feat_i, label)
+                emission.active[feat_i] = 0 if rand() > threshold_int else 1
+
+    # And a dense drop-out for the transition
+    for i in range(transition.active.shape[0]):
+        transition.active[i] = 0 if rand() > threshold_int else 1
+
+
+
 
 cdef double e_score(Example *example, int label, FeatMap feat_map, double[::1] weights) nogil:
     cdef double e_score = 0
@@ -58,10 +69,7 @@ def update_weights(Sequence sent, WeightVector transition, WeightVector emission
         # Update if prediction is not correct
         if gold_label != pred_label:
             for feat in cur.features:
-                if not feat.active: continue
                 new_feat_i = feat_map.feat_i_for_label(feat.index, gold_label)
-                if new_feat_i < 0:
-                    print "below zero -- error", new_feat_i, feat.index, gold_label
 
                 emission.update(feat_map.feat_i_for_label(feat.index, gold_label),
                            feat.value * alpha * cur.importance)

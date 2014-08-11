@@ -1,3 +1,6 @@
+#cython: boundscheck=False
+#cython: nonecheck=False
+#cython: wraparound=False
 #cython: profile=False
 
 from libc.stdio cimport *
@@ -31,8 +34,9 @@ cdef class WeightVector:
         self.acc = np.zeros_like(self.w, dtype=np.float64)
         self.adagrad_squares = np.ones_like(self.w, dtype=np.float64)
         self.last_update = np.zeros_like(self.w, dtype=np.int32)
+        self.active = np.ones_like(self.w, dtype=np.float64)
 
-        self.n_updates = 0
+        self.n_updates_mean = self.w.shape[0]
 
     def average(self):
         w_copy = np.asarray(self.w)
@@ -44,6 +48,13 @@ cdef class WeightVector:
         self.w = w_copy
 
     cpdef update(self, int feat_i, double val):
+        if feat_i < 0:
+            raise ValueError("feature index is < 0")
+
+        val *= self.active[feat_i]
+        if val == 0:
+            return
+
         cdef int missed_updates = self.n_updates - self.last_update[feat_i] - 1
 
         # Perform missing updates for previous rounds
@@ -59,6 +70,22 @@ cdef class WeightVector:
         self.acc[feat_i] += val
         self.w[feat_i] += val
 
+        # Keep running mean (Welford's algorithm)
+        self.n_updates_mean += 1
+        cdef double delta = val - self.mean
+
+        self.mean += delta / float(self.n_updates_mean)
+        self.m2 += delta * (val - self.mean)
+
+
+    cpdef double variance(self):
+        if self.n_updates_mean > 1:
+            return self.m2 / float(self.n_updates_mean)
+        else:
+            return 0
+
+    cpdef double stddev(self):
+        return sqrt(self.variance())
 
     cpdef update2d(self, int i1, int i2, double val):
         self.update(self.shape0 * i1 + i2, val)
@@ -74,10 +101,8 @@ cdef class WeightVector:
         cdef double e_score = 0
         cdef int feat_i
         for feat in example.features:
-            if not feat.active:
-                continue
             feat_i = feat_map.feat_i_for_label(feat.index, label)
-            e_score += self.w[feat_i] * feat.value
+            e_score += self.w[feat_i] * feat.value * self.active[feat_i]
         return e_score
 
 
@@ -91,6 +116,7 @@ cdef class WeightVector:
             w.acc = npz_file['acc']
             w.adagrad_squares = npz_file['adagrad_squares']
             w.last_update = npz_file['last_update']
+            w.active = np.ones_like(w.w, dtype=np.float64)
 
             return w
 

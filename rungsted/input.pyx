@@ -260,10 +260,10 @@ cdef vector[string] tokenize_header(string header):
     while True:
         found = header.find(space, begin+1)
         if found == -1:
-            results.push_back(header.substr(begin, header.size()))
+            results.push_back(header.substr(begin, header.size() - begin))
             break
 
-        results.push_back(header.substr(begin, found))
+        results.push_back(header.substr(begin, found - begin))
         begin = found + 1
 
     return results
@@ -278,6 +278,7 @@ cdef int parse_header(string header, dict label_map, Example * e, int audit) exc
 
     for token in tokens:
         if token[0] == '?':
+            print "is qmark token", token.substr(1)
             label_cost = map_label(token.substr(1), label_map)
             e.constraints.push_back(label_cost.label)
         elif token[0] == '\'':

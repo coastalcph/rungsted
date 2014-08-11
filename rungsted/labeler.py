@@ -14,11 +14,13 @@ import time
 
 from decoding import Viterbi as ViterbiStd
 from decoding_pd import Viterbi as ViterbiPd
+from corruption import FastBinomialCorruption, RecycledDistributionCorruption, inverse_zipfian_sampler, \
+    AdversialCorruption
 from feat_map import HashingFeatMap, DictFeatMap
 
 from input import read_vw_seq, count_group_sizes, dropout_groups
 from timer import Timer
-from struct_perceptron import avg_loss, accuracy, update_weights, drop_out
+from struct_perceptron import avg_loss, accuracy, update_weights
 from weights import WeightVector
 
 
@@ -108,15 +110,17 @@ logging.info("Weight vector sizes. Transition={}. Emission={}".format(wt.dims, w
 
 # Counting group sizes
 if args.train and args.drop_out:
-    logging.info("Counting group sizes")
-    group_sizes = count_group_sizes(train)
+    # logging.info("Counting group sizes")
+    # group_sizes = count_group_sizes(train)
+    # corrupter = FastBinomialCorruption(0.1, feat_map, n_labels)
+    # corrupter = RecycledDistributionCorruption(inverse_zipfian_sampler, feat_map, n_labels)
+    corrupter = AdversialCorruption(0.1, feat_map, n_labels)
+
 else:
     group_sizes = None
 n_updates = 0
 
 Viterbi = ViterbiStd if args.decoder == 'viterbi' else ViterbiPd
-
-
 
 def do_train(transition, emission):
     vit = Viterbi(n_labels, transition, emission, feat_map)
@@ -125,6 +129,8 @@ def do_train(transition, emission):
     n_updates = 0
     for epoch in range(1, args.passes+1):
         for sent in train:
+            if args.drop_out:
+                corrupter.corrupt_sequence(sent, emission, transition)
             vit.decode(sent)
             weight_updater(sent, transition, emission, 0.1, n_labels, feat_map)
             n_updates += 1
@@ -174,23 +180,25 @@ def do_test(transition, emission):
 
 # Training
 if args.train:
-    if args.drop_out:
-        wt_total = np.zeros_like(wt.w)
-        we_total = np.zeros_like(we.w)
-        for i in range(25):
-            dropout_groups(train, group_sizes)
-            wt_round = wt.copy()
-            we_round = we.copy()
+    do_train(wt, we)
+    pass
+    # Ensemble training
+    # if args.drop_out:
+    #     wt_total = np.zeros_like(wt.w)
+    #     we_total = np.zeros_like(we.w)
+    #     for i in range(25):
+    #         dropout_groups(train, group_sizes)
+    #         wt_round = wt.copy()
+    #         we_round = we.copy()
+    #
+    #         do_train(wt_round, we_round)
+    #         we_total += we_round.w
+    #         wt_total += wt_round.w
+    #
+    #     wt = WeightVector(wt.dims, w=wt_total)
+    #     we = WeightVector(we.dims, w=we_total)
 
-            do_train(wt_round, we_round)
-            we_total += we_round.w
-            wt_total += wt_round.w
 
-        wt = WeightVector(wt.dims, w=wt_total)
-        we = WeightVector(we.dims, w=we_total)
-
-    else:
-        do_train(wt, we)
 
 
 # Testing
