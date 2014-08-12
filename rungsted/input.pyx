@@ -602,7 +602,7 @@ cdef int parse_features2(string feature_str, Example * e, int audit, PartialExam
     return 0
 
 
-def read_vw_seq(filename, FeatMap feat_map, quadratic=[], ignore=[], labels=None, audit=False):
+def read_vw_seq(filename, FeatMap feat_map, quadratic=[], ignore=[], labels=None, audit=False, require_labels=False):
     cdef:
         char* fname
         FILE* cfile
@@ -662,6 +662,9 @@ def read_vw_seq(filename, FeatMap feat_map, quadratic=[], ignore=[], labels=None
 
             header = line_str.substr(0, bar_pos)
             parse_header(header, label_map, &e, audit)
+            if require_labels and e.labels.size() == 0:
+                raise ValueError("Missing label in example: {}".format(line))
+
 
             feature_section = line_str.substr(bar_pos + 1)
 

@@ -78,7 +78,7 @@ if args.initial_model:
 train = None
 if args.train:
     train, train_labels = read_vw_seq(args.train, ignore=args.ignore, quadratic=args.quadratic, feat_map=feat_map,
-                                      labels=labels, audit=args.audit)
+                                      labels=labels, audit=args.audit, require_labels=True)
     if args.initial_model:
         assert len(labels) == len(train_labels), \
             "Labels from training data not found in saved model".format(set(train_labels) - set(labels))
