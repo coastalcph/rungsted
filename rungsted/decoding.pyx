@@ -53,11 +53,17 @@ cdef class Viterbi(object):
                     self.trellis[word, label] = 0
             word += 1
 
+    cdef _fill_trellis_with_zeros(self, int size):
+        cdef int i, j
+        for i in range(size):
+            for j in range(self.trellis.shape[1]):
+                self.trellis[i, j] = 0
+
     def decode(self, Sequence sent):
         if self.trellis.shape[0] < len(sent):
             self._alloc_trellis(int(math.ceil(len(sent) * 1.1)))
         # self._alloc_trellis(len(sent))
-
+        self._fill_trellis_with_zeros(len(sent))
         self._constrain_labels(sent)
         self._fill_trellis(sent)
         best_seq = self._recover_best_seq(len(sent))
