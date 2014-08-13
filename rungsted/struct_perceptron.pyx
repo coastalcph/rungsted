@@ -46,8 +46,6 @@ cdef double e_score(Example *example, int label, FeatMap feat_map, double[::1] w
     cdef int feat_i
 
     for feat in example.features:
-        if not feat.active:
-            continue
         feat_i = feat_map.feat_i_for_label(feat.index, label)
         e_score += weights[feat_i] * feat.value
     return e_score

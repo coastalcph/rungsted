@@ -152,9 +152,8 @@ cpdef int block_groups(list sequences, uint8_t[::1] blocked_groups):
                 feat = &(seq.examples[i].features[j])
                 if blocked_groups[feat.group] == 1:
                     n_blocked += 1
-                    feat.active = 0
                 else:
-                    feat.active = 1
+                    pass
     return n_blocked
 
 cdef Dataset dataset_new(list quadratic_list, list ignore_list):
@@ -288,7 +287,7 @@ cdef int parse_header(string header, dict label_map, Example * e, int audit) exc
             #  - an importance weight, e.g. 0.75
             # Thus if the string contains a colon, it is a label, and
             # if it contains a dot but not colon, it is an importance weight.
-            if token.find(".") and token.find(":") != -1:
+            if token.find(".") and token.find(":") == -1:
                 e.importance = strtod(token.c_str(), NULL)
 
                 if e.importance < 0:
@@ -326,11 +325,10 @@ cdef struct PartialExample:
     vector[string] names
 
 
-cdef void add_feature(Example *example, int feat_i, double value, int active, int group):
+cdef void add_feature(Example *example, int feat_i, double value, int group):
     cdef Feature feat
     feat.index = feat_i
     feat.value = value
-    feat.active = active
     feat.group = group
     example.features.push_back(feat)
 
@@ -338,8 +336,6 @@ cdef void add_partial(Example *example, PartialExample *partial, int audit):
     global feature_map_global
     cdef FeatMap feat_map = feature_map_global
     assert feature_map_global is not None
-
-    # cdef string full_feat_name
 
     if not partial.ns_name.empty() and example.dataset.ignore[<int> partial.ns_name[0]]:
         partial.feat_group.clear()
@@ -358,7 +354,6 @@ cdef void add_partial(Example *example, PartialExample *partial, int audit):
 
         feat.index = feat_i
         feat.value = partial.ns_mult * partial.feat_val
-        feat.active = 1
         if not partial.feat_group.empty():
             feat.group = hash_str(partial.feat_group, 22)
         else:
@@ -671,7 +666,7 @@ def read_vw_seq(filename, FeatMap feat_map, quadratic=[], ignore=[], labels=None
             parse_features2(feature_section, &e, audit, &partial)
 
             # Add constant feature
-            add_feature(&e, feat_map.feat_i("^Constant"), 1, 1, -1)
+            add_feature(&e, feat_map.feat_i("^Constant"), 1, -1)
 
             seq.examples.push_back(e)
 
