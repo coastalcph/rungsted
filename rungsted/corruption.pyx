@@ -9,9 +9,15 @@ from weights cimport WeightVector
 import numpy as np
 # cimport numpy as np
 
+from libc.stdint cimport uint32_t
 from libc.stdlib cimport rand
-cdef extern from "limits.h":
-    int INT_MAX
+
+cdef extern from "stdlib.h":
+    uint32_t arc4random_uniform(uint32_t upper_bound)
+    uint32_t arc4random()
+
+cdef uint32_t ARCRAND_MAX = (2**32)-1
+
 
 cdef class FastBinomialCorruption(object):
     cdef:
@@ -29,7 +35,8 @@ cdef class FastBinomialCorruption(object):
             Example *example
             int i, j, label
             int base_feat_i, feat_i
-            int threshold_int = int((1.0 - self.drop_pct) * float(INT_MAX))
+            uint32_t threshold_int = <uint32_t> ((1.0 - self.drop_pct) * ARCRAND_MAX)
+            int selected = 0, total = 0
 
         # Do a sparse drop-out of the emissions features
         for i in range(sent.examples.size()):
@@ -38,11 +45,11 @@ cdef class FastBinomialCorruption(object):
                 base_feat_i = (&example.features[j]).index
                 for label in range(self.n_labels):
                     feat_i = self.feat_map.feat_i_for_label(base_feat_i, label)
-                    emission.active[feat_i] = 0 if rand() > threshold_int else 1
+                    emission.active[feat_i] = 0 if arc4random() > threshold_int else 1
 
         # And a dense drop-out for the transition
         for i in range(transition.active.shape[0]):
-            transition.active[i] = 0 if rand() > threshold_int else 1
+            transition.active[i] = 0 if arc4random() > threshold_int else 1
 
 cdef class DistributionCorruption(object):
     cdef:
@@ -99,11 +106,10 @@ cdef class RecycledDistributionCorruption(DistributionCorruption):
 
     def __init__(self, sample_fn, FeatMap feat_map, int n_labels, int capacity=1000000):
         super(RecycledDistributionCorruption, self).__init__(sample_fn, feat_map, n_labels, capacity)
-        self.capacity_scale_factor = (self.capacity / float(INT_MAX))
 
     cdef double _draw(self):
-        cdef int random_index = int(rand() * self.capacity_scale_factor)
-        return self.buffer[random_index]
+        cdef uint32_t index = arc4random_uniform(self.capacity)
+        return self.buffer[index]
 
 cdef class AdversialCorruption(object):
     cdef:
@@ -121,7 +127,8 @@ cdef class AdversialCorruption(object):
             Example *example
             int i, j, base_feat_i, label, feat_i
             double w_cut
-            int threshold_int = int((1.0 - self.drop_pct) * float(INT_MAX))
+            # int threshold_int = int((1.0 - self.drop_pct) * float(INT_MAX))
+            uint32_t threshold_int = <uint32_t> ((1.0 - self.drop_pct) * ARCRAND_MAX)
             # int inactive = 0, total = 0
 
         w_cut = abs(emission.mean) + abs(emission.stddev())
@@ -138,7 +145,10 @@ cdef class AdversialCorruption(object):
                 for label in range(self.n_labels):
                     feat_i = self.feat_map.feat_i_for_label(base_feat_i, label)
                     # total += 1
-                    if rand() > threshold_int and abs(emission.w[feat_i]) > w_cut:
+                    # if rand() > threshold_int and abs(emission.w[feat_i]) > w_cut:
+
+                    if arc4random() > threshold_int and abs(emission.w[feat_i]) > w_cut:
+
                         # inactive += 1
                         emission.active[feat_i] = 0
                     else:
