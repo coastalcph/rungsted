@@ -129,12 +129,12 @@ cdef class AdversialCorruption(object):
         cdef:
             Example *example
             int i, j, base_feat_i, label, feat_i
-            double w_cut
             # int threshold_int = int((1.0 - self.drop_pct) * float(INT_MAX))
             long threshold_int = <long> ((1.0 - self.drop_pct) * RAND_MAX)
+            double w_stddev
             # int inactive = 0, total = 0
 
-        w_cut = abs(emission.mean) + abs(emission.stddev())
+        w_stddev = emission.stddev()
 
         # if rand() > (0.99 * INT_MAX):
             # print "mean     {}  variance {}".format(emission.mean, emission.variance())
@@ -148,20 +148,19 @@ cdef class AdversialCorruption(object):
                 for label in range(self.n_labels):
                     feat_i = self.feat_map.feat_i_for_label(base_feat_i, label)
                     # total += 1
-                    # if rand() > threshold_int and abs(emission.w[feat_i]) > w_cut:
 
-                    if random() > threshold_int and abs(emission.w[feat_i]) > w_cut:
+                    if random() > threshold_int and abs(emission.w[feat_i] - emission.mean) > w_stddev:
                         # inactive += 1
                         emission.active[feat_i] = 0
                     else:
                         emission.active[feat_i] = 1
 
         # And a dense drop-out for the transition
-        w_cut = abs(transition.mean) + abs(transition.stddev())
+        w_stddev = transition.stddev()
 
         for i in range(transition.active.shape[0]):
             # total += 1
-            if rand() > threshold_int and abs(transition.w[i]) > w_cut:
+            if rand() > threshold_int and abs(transition.w[i] - transition.mean) > w_stddev:
                 # inactive += 1
                 transition.active[i] = 0
             else:
