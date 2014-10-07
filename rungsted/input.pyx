@@ -7,6 +7,7 @@ from libcpp.string cimport string
 from libcpp cimport bool
 
 
+
 from cython.operator cimport dereference as deref
 import numpy as np
 cimport numpy as cnp
@@ -316,8 +317,11 @@ cdef int parse_header(string header, dict label_map, Example * e, int audit) exc
 
 cdef struct PartialExample:
     Example *example
+    string *feature_str
     string ns_name
     string feat_name
+    int feat_begin
+    int feat_len
     string feat_group
     double feat_val
     double ns_mult
@@ -341,12 +345,11 @@ cdef void add_partial(Example *example, PartialExample *partial, int audit):
         partial.feat_group.clear()
         return
 
-    partial.feat_name.push_back("^")
-    partial.feat_name += partial.ns_name
-    # full_feat_name = partial.ns_name
-    # full_feat_name.push_back("^")
-    # full_feat_name += partial.feat_name
-    feat_i = feat_map.feat_i(partial.feat_name.c_str())
+    cdef int ns_name_len = partial.ns_name.size()
+
+    partial.ns_name.push_back("^")
+    partial.ns_name.append(deref(partial.feature_str), partial.feat_begin, partial.feat_len)
+    feat_i = feat_map.feat_i(partial.ns_name)
 
     cdef Feature feat
     if feat_i >= 0:
@@ -354,15 +357,17 @@ cdef void add_partial(Example *example, PartialExample *partial, int audit):
 
         feat.index = feat_i
         feat.value = partial.ns_mult * partial.feat_val
-        if not partial.feat_group.empty():
-            feat.group = hash_str(partial.feat_group, 22)
-        else:
-            feat.group = hash_str(partial.feat_name, 22)
+        # if not partial.feat_group.empty():
+        #     feat.group = hash_str(partial.feat_group, 22)
+        # else:
+        #     feat.group = hash_str(partial.feat_name, 22)
 
         example.features.push_back(feat)
 
         if audit:
-            print "{}:{}@{}=>{}".format(partial.feat_name, feat.value, feat.group, feat.index),
+            print "{}:{}=>{}".format(partial.ns_name, feat.value, feat.index),
+
+    partial.ns_name.resize(ns_name_len)
 
 
     partial.feat_group.clear()
@@ -512,56 +517,44 @@ cdef void add_partial(Example *example, PartialExample *partial, int audit):
 
 
 
-cdef int parse_features2(string feature_str, Example * e, int audit, PartialExample *partial) except -1:
+cdef int parse_features2(Example * e, int audit, PartialExample *partial) except -1:
     cdef:
         short inside_feature = 0
         int i = 0, found, head = 0, read
-        char c, next_c
+        char c
         double parsed_val
         string number_like = "0123456789.+-"
         string space = " \n"
         string space_or_colon = ": \n"
 
+        const char *str_begin
+        char *str_end
+
     # print "\ngot", feature_str
 
     partial.feat_val = 1.0
     partial.ns_mult = 1.0
+    cdef string feature_str = deref(partial.feature_str)
     # Initialize with -1, a value indicating the namespace is not present
     # in the current example
     while i < feature_str.size():
         c = feature_str[i]
 
-        # We're about to read one of
-        #   * a feature value (number)
-        #   * a group name (prefixed by @)
+        # We're about to read one of a feature value (number)
         if inside_feature:
             # Check if next character is digit-like
             if feature_str.find_first_of(number_like, i) == i:
-                parsed_val = strtod(feature_str.c_str() + i, NULL)
-                if not parsed_val:
+                str_begin = feature_str.c_str() + i
+                parsed_val = strtod(str_begin, &str_end)
+                if str_begin == str_end:
                     raise ValueError("Feature value is not a number: '{}'".format(feature_str.substr(i)))
                 else:
                     partial.feat_val = parsed_val
-                    found = feature_str.find_first_of(space, i)
-                    assert found != -1
-                    if feature_str[found] == ' ':
-                        inside_feature = 0
-                        add_partial(e, partial, audit)
-                    else:
-                        inside_feature = 1
-
-                    i = found
-
-            elif c == '@':
-                found = feature_str.find_first_of(space, i + 1)
-                assert found != -1
-                partial.feat_group = feature_str.substr(i + 1, found - i - 1)
-                # print "group '{}'".format(partial.feat_group)
-                inside_feature = 0
-                add_partial(e, partial, audit)
-                i = found
+                    inside_feature = 0
+                    add_partial(e, partial, audit)
+                    i += str_end - str_begin
             else:
-                raise ValueError("Invalid feature declaration (after ':')")
+                raise ValueError("Invalid feature declaration (after ':'). Rest of line: {}".format(feature_str.substr(i)))
 
         elif c == '|':
             found = feature_str.find_first_of(space_or_colon, i)
@@ -582,11 +575,15 @@ cdef int parse_features2(string feature_str, Example * e, int audit, PartialExam
         elif c == ' ':
             # Skip space
             i += 1
+        elif c == "\n":
+            i += 1
         else:
             # Feature
             found = feature_str.find_first_of(space_or_colon, i)
             assert found != -1
-            partial.feat_name = feature_str.substr(i, found - i)
+            # partial.feat_name = feature_str.substr(i, found - i)
+            partial.feat_begin = i
+            partial.feat_len = found - i
             if feature_str[found] == ':' and found < feature_str.size():
                 inside_feature = 1
             else:
@@ -662,8 +659,8 @@ def read_vw_seq(filename, FeatMap feat_map, quadratic=[], ignore=[], labels=None
 
 
             feature_section = line_str.substr(bar_pos + 1)
-
-            parse_features2(feature_section, &e, audit, &partial)
+            partial.feature_str = &feature_section
+            parse_features2(&e, audit, &partial)
 
             # Add constant feature
             add_feature(&e, feat_map.feat_i("^Constant"), 1, -1)
