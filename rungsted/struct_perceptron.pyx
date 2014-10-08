@@ -10,7 +10,7 @@ import random
 import cython
 
 from feat_map cimport FeatMap
-from .input cimport Example, Feature, Sequence, example_cost
+from input cimport Example, Feature, Sequence, example_cost
 from weights cimport WeightVector
 
 from libc.stdlib cimport rand
