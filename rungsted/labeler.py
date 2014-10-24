@@ -112,9 +112,9 @@ logging.info("Weight vector sizes. Transition={}. Emission={}".format(wt.dims, w
 if args.train and args.drop_out:
     # logging.info("Counting group sizes")
     # group_sizes = count_group_sizes(train)
-    # corrupter = FastBinomialCorruption(0.1, feat_map, n_labels)
+    corrupter = FastBinomialCorruption(0.1, feat_map, n_labels)
     # corrupter = RecycledDistributionCorruption(inverse_zipfian_sampler, feat_map, n_labels)
-    corrupter = AdversialCorruption(0.1, feat_map, n_labels)
+    # corrupter = AdversialCorruption(0.1, feat_map, n_labels)
 
 else:
     group_sizes = None
