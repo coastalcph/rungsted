@@ -2,18 +2,19 @@
 """Create Rungsted compatible feature files from treebanks
 
 Usage:
-  conll_to_vw.py <input> <output> [--feature-set NAME] [--name NAME]
+  conll_to_vw.py <input> <output> [--feature-set NAME] [--name NAME] [--coarse]
   conll_to_vw.py (-h | --help)
 
 Options:
   -h --help                 Show this screen.
   --feature-set NAME        Which feature to use [default: honnibal13].
-  --name NAME               Name of dataset. Output as part of the id for each token [default: d]
+  --name NAME               Name of dataset. Output as part of the id for each token [default: d].
+  --coarse                  Use coarse-grained tags.
 """
 import codecs
 from collections import defaultdict
 from docopt import docopt
-from pos_features import taskar12, honnibal13
+from pos_features import taskar12, honnibal13, honnibal13_groups
 
 if __name__ == '__main__':
     args = docopt(__doc__)
@@ -23,23 +24,28 @@ if __name__ == '__main__':
 
     features_for_token = {
         'taskar12': taskar12,
-        'honnibal13': honnibal13
+        'honnibal13': honnibal13,
+        'honnibal13-groups': honnibal13_groups
     }[args['--feature-set']]
 
     def normalize_word(word):
         return word.replace(":", "COL")
 
     def normalize_label(label):
-        return normalize_word(label)
+        return label.replace("``", "O_QUOT")\
+            .replace("''", "C_QUOT")\
+            .replace(':', 'COL')\
+            .replace('?', 'QMARK')
 
     def output_sentence(sent):
+        label_key = 'cpos' if args['--coarse'] else 'pos'
         for i in range(len(sent['word'])):
             print >>data_out, "{label} '{name}-{sent_i}-{token_i}|".format(
-                label=normalize_label(sent['cpos'][i]),
+                label=normalize_label(sent[label_key][i]),
                 name=args['--name'],
                 sent_i=sent_i,
                 token_i=i+1),
-            print >>data_out, u" ".join(features_for_token(sent['word'], sent['cpos'], i))
+            print >>data_out, u" ".join(features_for_token(sent['word'], sent[label_key], i))
 
     # Process one sentence at a time
     sent = defaultdict(list)

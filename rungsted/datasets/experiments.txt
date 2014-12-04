@@ -1,0 +1,50 @@
+## Plain Viterbi
+
+Plain (fine)
+                        accuracy
+name                            
+gweb-answers-test       0.898865
+gweb-emails-test        0.882027
+gweb-newsgroups-test    0.895937
+gweb-reviews-test       0.907676
+gweb-weblogs-test       0.902093
+ontonotes-wsj-test      0.958626
+twittertest_gold_sd165  0.807462
+Mean accuracy: 89.32%
+
+Plain (coarse)
+                      accuracy
+name                          
+gweb-answers-test     0.929709
+gweb-emails-test      0.928023
+gweb-newsgroups-test  0.934144
+gweb-reviews-test     0.939685
+gweb-weblogs-test     0.941295
+ontonotes-wsj-test    0.974185
+Mean accuracy: 94.12%
+
+
+## "Dropout" with 25 samples
+
+With drop-out (fine)
+                        accuracy
+name                            
+gweb-answers-test       0.901190
+gweb-emails-test        0.881608
+gweb-newsgroups-test    0.897245
+gweb-reviews-test       0.909528
+gweb-weblogs-test       0.902584
+ontonotes-wsj-test      0.960192
+twittertest_gold_sd165  0.802886
+Mean accuracy: 89.36%
+
+With drop-out (coarse)
+                      accuracy
+name                          
+gweb-answers-test     0.930472
+gweb-emails-test      0.927535
+gweb-newsgroups-test  0.934289
+gweb-reviews-test     0.941181
+gweb-weblogs-test     0.941246
+ontonotes-wsj-test    0.974413
+Mean accuracy: 94.15%

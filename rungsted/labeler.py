@@ -1,43 +1,58 @@
 # coding: utf-8
 import argparse
 from collections import defaultdict
+import copy
+import json
 import logging
 import os
-import random
 import cPickle
+import IPython
 import numpy as np
 import sys
-from os.path import exists
+from os.path import exists, join
 import time
-from decoding import Viterbi, LogViterbi
+
+from decoding import Viterbi as ViterbiStd
+from decoding_pd import Viterbi as ViterbiPd
+from corruption import FastBinomialCorruption, RecycledDistributionCorruption, inverse_zipfian_sampler, \
+    AdversialCorruption
 from feat_map import HashingFeatMap, DictFeatMap
 
-from input import read_vw_seq
+from input import read_vw_seq, count_group_sizes, dropout_groups
 from timer import Timer
-# from struct_perceptron import Weights, viterbi, update_weights, avg_loss, accuracy, update_weights_cs
-from struct_perceptron import Weights, viterbi, update_weights, avg_loss, accuracy
+from struct_perceptron import avg_loss, accuracy, update_weights
+from weights import WeightVector
+
 
 logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
 
-parser = argparse.ArgumentParser(description="""Structured perceptron tagger""")
-parser.add_argument('--train', help="Training data (vw format)")
-parser.add_argument('--test', help="Test data (vw format)")
-parser.add_argument('--hash-bits', '-b', help="Size of feature vector in bits (2**b)", type=int)
-parser.add_argument('--passes', help="Number of passes over the training set", type=int, default=5)
-parser.add_argument('--predictions', '-p', help="File for outputting predictions")
-parser.add_argument('--ignore', help="One-character prefix of namespaces to ignore", nargs='*', default=[])
+parser = argparse.ArgumentParser(description="""Structured perceptron tagger.""")
+parser.add_argument('--train', help="Training data (vw format).")
+parser.add_argument('--test', help="Test data (vw format).")
+parser.add_argument('--hash-bits', '-b', help="Size of feature vector in bits (2**b).", type=int)
+parser.add_argument('--passes', help="Number of passes over the training set.", type=int, default=5)
+parser.add_argument('--predictions', '-p', help="File for outputting predictions.")
+parser.add_argument('--ignore', help="One-character prefix of namespaces to ignore.", nargs='*', default=[])
 parser.add_argument('--quadratic', '-q', help="Combine features in these two namespace, identified by a one-character prefix of their name"
-                                              "':' is a short-hand for all namespaces", nargs='*', default=[])
-parser.add_argument('--shuffle', help="Shuffle examples after each iteration", action='store_true')
-parser.add_argument('--no-average', help="Do not average over all updates", action='store_true')
-parser.add_argument('--initial-model', '-i', help="Initial model from this file")
-parser.add_argument('--final-model', '-f', help="Save model here after training")
+                                              "':' is a short-hand for all namespaces.", nargs='*', default=[])
+parser.add_argument('--no-average', help="Do not average over all updates.", action='store_false',
+                    dest='average', default=True)
+parser.add_argument('--no-ada-grad', help="Do not use adaptive gradient scaling.",
+                    action='store_false', dest='ada_grad', default=True)
+parser.add_argument('--initial-model', '-i', help="Initial model from this file.")
+parser.add_argument('--final-model', '-f', help="Save model here after training.")
 parser.add_argument('--cost-sensitive', '--cs', help="Cost-sensitive weight updates", action='store_true')
+parser.add_argument('--append-test', help="Append test result as JSON object to this file.")
 parser.add_argument('--audit', help="Print the interpretation of the input files to standard out. "
-                                    "Useful for debugging", action='store_true')
+                                    "Useful for debugging. ", action='store_true')
+parser.add_argument('--name', help="Identify this invocation by NAME (use in conjunction with --append-test).")
+parser.add_argument('--labels', help="Read the set of labels from this file.")
+parser.add_argument('--drop-out', help="Regularize by randomly removing features (with probability 0.1).", action='store_true')
+parser.add_argument('--decoder', '-d', help="Use this decoder to find the best sequence given the constraints",
+                    choices=('viterbi', 'viterbi_pd'), default='viterbi')
+
 
 args = parser.parse_args()
-
 
 timers = defaultdict(lambda: Timer())
 logging.info("Tagger started. \nCalled with {}".format(args))
@@ -47,77 +62,98 @@ if args.hash_bits:
 else:
     feat_map = DictFeatMap()
 
-# weight_updater = update_weights_cs if args.cost_sensitive else update_weights
 weight_updater = update_weights
+if args.labels:
+    labels = [line.strip() for line in open(args.labels)]
+else:
+    labels = None
 
 if args.initial_model:
-    if not args.hash_bits and exists(args.initial_model + ".features"):
-        feat_map.feat2index_ = cPickle.load(open(args.initial_model + ".features"))
+    wt = WeightVector.load(join(args.initial_model, 'transition.npz'))
+    we = WeightVector.load(join(args.initial_model, 'emission.npz'))
+    labels = list(np.load(join(args.initial_model, 'labels.npy')))
+    if not args.hash_bits:
+        feat_map.feat2index_ = cPickle.load(open(join(args.initial_model, 'feature_map.pickle')))
 
 train = None
-train_labels = None
 if args.train:
     train, train_labels = read_vw_seq(args.train, ignore=args.ignore, quadratic=args.quadratic, feat_map=feat_map,
-                                      audit=args.audit)
+                                      labels=labels, audit=args.audit, require_labels=True)
+    if args.initial_model:
+        assert len(labels) == len(train_labels), \
+            "Labels from training data not found in saved model".format(set(train_labels) - set(labels))
+    labels = train_labels
     logging.info("Training data {} sentences {} labels".format(len(train), len(train_labels)))
 
 # Prevents the addition of new features when loading the test set
 feat_map.freeze()
 test = None
 if args.test:
-    # FIXME labels may be loaded from saved file
     test, test_labels = read_vw_seq(args.test, ignore=args.ignore, quadratic=args.quadratic, feat_map=feat_map,
-                                    labels=train_labels, audit=args.audit)
+                                    labels=labels, audit=args.audit)
+    if args.initial_model:
+        assert len(labels) == len(test_labels), \
+            "Labels from test data not found in saved model: {}".format(set(test_labels) - set(labels))
+    labels = test_labels
     logging.info("Test data {} sentences {} labels".format(len(test), len(test_labels)))
-    assert len(train_labels) == len(test_labels)
 
-# FIXME labels may be loaded from saved file
-n_labels = len(train_labels)
+n_labels = len(labels)
 if not args.hash_bits:
     feat_map.n_labels = n_labels
 
-
 # Loading weights
-w = Weights(n_labels, feat_map.n_feats())
-logging.info("Weight vector size {}".format(feat_map.n_feats()))
-if args.initial_model:
-    w.load(open(args.initial_model))
+if not args.initial_model:
+    wt = WeightVector((n_labels + 2, n_labels + 2), ada_grad=args.ada_grad)
+    we = WeightVector(feat_map.n_feats(), ada_grad=args.ada_grad)
 
-if not args.hash_bits and args.final_model:
-    cPickle.dump(feat_map.feat2index_, open(args.final_model + ".features", 'w'), protocol=2)
+logging.info("Weight vector sizes. Transition={}. Emission={}".format(wt.dims, we.dims))
 
+# Counting group sizes
+if args.train and args.drop_out:
+    # logging.info("Counting group sizes")
+    # group_sizes = count_group_sizes(train)
+    corrupter = FastBinomialCorruption(0.1, feat_map, n_labels)
+    # corrupter = RecycledDistributionCorruption(inverse_zipfian_sampler, feat_map, n_labels)
+    # corrupter = AdversialCorruption(0.1, feat_map, n_labels)
+
+else:
+    group_sizes = None
 n_updates = 0
 
-vit = LogViterbi(n_labels, w, feat_map)
+Viterbi = ViterbiStd if args.decoder == 'viterbi' else ViterbiPd
 
-# Training loop
-if args.train:
+def do_train(transition, emission):
+    vit = Viterbi(n_labels, transition, emission, feat_map)
+
     timers['train'].begin()
-    epoch_msg = ""
+    n_updates = 0
     for epoch in range(1, args.passes+1):
-        learning_rate = 0.1
-        if args.shuffle:
-            random.shuffle(train)
         for sent in train:
+            if args.drop_out:
+                corrupter.corrupt_sequence(sent, emission, transition)
             vit.decode(sent)
-            weight_updater(sent, w, learning_rate, n_labels, feat_map)
-            w.incr_n_updates()
+            weight_updater(sent, transition, emission, 0.1, n_labels, feat_map)
+            n_updates += 1
+            transition.n_updates = n_updates
+            emission.n_updates = n_updates
 
-            if w.n_updates % 1000 == 0:
-                print >>sys.stderr, '\r[{}] {}k sentences total'.format(epoch, w.n_updates / 1000),
+            if n_updates % 1000 == 0:
+                print >>sys.stderr, '\r[{}] {}k sentences total'.format(epoch, n_updates / 1000),
 
         epoch_msg = "[{}] train loss={:.4f} ".format(epoch, avg_loss(train))
         print >>sys.stderr, "\r{}{}".format(epoch_msg, " "*72)
 
     timers['train'].end()
-    if not args.no_average:
-        w.average_weights()
+    if args.average:
+        transition.average()
+        emission.average()
 
+    tokens_trained = epoch * sum(len(seq) for seq in train)
     print >>sys.stderr, "Training took {:.2f} secs. {} words/sec".format(timers['train'].elapsed(),
-                                                                         int(sum(len(seq) for seq in train) / timers['train'].elapsed()))
+                                                                         int(tokens_trained / timers['train'].elapsed()))
+def do_test(transition, emission):
+    vit = Viterbi(n_labels, transition, emission, feat_map)
 
-# Testing
-if args.test:
     timers['test'].begin()
     with open(args.predictions or os.devnull, 'w') as out:
         labels_map = dict((i, label_str) for i, label_str in enumerate(test_labels))
@@ -134,7 +170,52 @@ if args.test:
     print >>sys.stderr, "Test took {:.2f} secs. {} words/sec".format(timers['test'].elapsed(),
                                                                          int(sum(len(seq) for seq in test) / timers['test'].elapsed()))
 
+    if args.append_test:
+        with open(args.append_test, 'a') as result_file:
+            result = {'accuracy': accuracy(test), 'name': args.name}
+            result.update(args.__dict__)
+            json.dump(result, result_file)
+            print >>result_file, ""
+
+
+# Training
+if args.train:
+    do_train(wt, we)
+    pass
+    # Ensemble training
+    # if args.drop_out:
+    #     wt_total = np.zeros_like(wt.w)
+    #     we_total = np.zeros_like(we.w)
+    #     for i in range(25):
+    #         dropout_groups(train, group_sizes)
+    #         wt_round = wt.copy()
+    #         we_round = we.copy()
+    #
+    #         do_train(wt_round, we_round)
+    #         we_total += we_round.w
+    #         wt_total += wt_round.w
+    #
+    #     wt = WeightVector(wt.dims, w=wt_total)
+    #     we = WeightVector(we.dims, w=we_total)
+
+
+
+
+# Testing
+if args.test:
+    do_test(wt, we)
 
 # Save model
 if args.final_model:
-    w.save(open(args.final_model, 'w'))
+    if not exists(args.final_model):
+        os.makedirs(args.final_model)
+
+    wt.save(join(args.final_model, 'transition.npz'))
+    we.save(join(args.final_model, 'emission.npz'))
+    np.save(join(args.final_model, 'labels'), labels)
+    json.dump(args.__dict__, open(join(args.final_model, 'settings.json'), 'w'))
+
+    if not args.hash_bits:
+        cPickle.dump(feat_map.feat2index_,
+                     open(join(args.final_model, 'feature_map.pickle'), 'w'), protocol=2)
+
