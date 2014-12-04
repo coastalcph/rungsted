@@ -42,6 +42,8 @@ from libc.stdlib cimport rand
 DEF MAX_LEN = 2048
 DEF MAX_FEAT_NAME_LEN = 1024
 cdef char* DEFAULT_NS = ""
+# FIXME should really be imported from the string
+cdef size_t npos = -1
 
 cdef FeatMap feature_map_global
 
@@ -288,7 +290,7 @@ cdef int parse_header(string header, dict label_map, Example * e, int audit) exc
             #  - an importance weight, e.g. 0.75
             # Thus if the string contains a colon, it is a label, and
             # if it contains a dot but not colon, it is an importance weight.
-            if token.find(".") and token.find(":") == -1:
+            if token.find(".") != npos and token.find(":") == npos:
                 e.importance = strtod(token.c_str(), NULL)
 
                 if e.importance < 0:
