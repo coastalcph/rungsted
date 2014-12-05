@@ -87,6 +87,11 @@ cdef class Sequence(object):
             cdef Example e
             return [e.id_ for e in self.examples]
 
+    property label_costs:
+        def __get__(self):
+            cdef Example e
+            return [[(label.label, label.cost) for label in e.labels]
+                    for e in self.examples]
 
     def __dealloc__(self):
         cdef Example e
@@ -237,9 +242,9 @@ cdef LabelCost map_label(string label_def, dict label_map):
         int colon_pos
 
     colon_pos = label_def.find(':')
-    if colon_pos != -1:
+    if colon_pos != npos:
         label_name = label_def.substr(0, colon_pos)
-        cost = strtod(label_def.substr(colon_pos).c_str(), NULL)
+        cost = strtod(label_def.substr(colon_pos + 1).c_str(), NULL)
     else:
         label_name = label_def
 
@@ -247,7 +252,7 @@ cdef LabelCost map_label(string label_def, dict label_map):
     label = label_map.get(label_name, -1)
     if label == -1:
         label = len(label_map)
-        label_map[label_def] = label
+        label_map[label_name] = label
 
     return LabelCost(label=label, cost=cost)
 
@@ -375,150 +380,6 @@ cdef void add_partial(Example *example, PartialExample *partial, int audit):
     partial.feat_group.clear()
 
 
-
-# cdef int parse_features(string feature_str, Example * e, FeatMap feat_map, int audit, PartialExample *partial) except -1:
-#     cdef:
-#         # Indexes of the beginning of the namespace
-#         int ns_begin[255] # Maximum value of char
-#         double cur_ns_mult = 1
-#         string cur_ns
-#         string cur_feat_name
-#         string cur_feat_group
-#         double cur_feat_val = 1.0
-#
-#         # States
-#         short NS_NAME = 1
-#         short FEATURE_NAME = 2
-#         short FEATURE_TRAILER = 4
-#         short NS_VAL = 8
-#         short OUTSIDE = 16
-#         short FEATURE_VAL = 32
-#         short FEATURE_GROUP = 64
-#         short INVALID = 128
-#
-#         # Types of tokens
-#         short SPACE = 1
-#         short BAR = 2
-#         short COLON = 4
-#         short DIGIT = 8
-#         short AT = 16
-#         short OTHER = 32
-#         short FINAL = 64
-#
-#         int i
-#
-#
-#     partial.feat_val = 1.0
-#     partial.ns_mult = 1.0
-#     # Initialize with -1, a value indicating the namespace is not present
-#     # in the current example
-#     for i in range(256): ns_begin[i] = -1
-#
-#     cdef string buf = string()
-#
-#     cdef char c
-#     cdef int token
-#     cdef int state = OUTSIDE
-#     for i in range(feature_str.size()):
-#         c = feature_str[i]
-#         if isspace(c):
-#             token = SPACE
-#         elif c == '|':
-#             token = BAR
-#         elif c == ':':
-#             token = COLON
-#         elif isdigit(c):
-#             token = DIGIT
-#         elif c == '@':
-#             token = AT
-#         else:
-#             token = OTHER
-#
-#         if state == FEATURE_NAME:
-#             if token & (COLON|SPACE|FINAL):
-#                 partial.feat_name = buf
-#                 partial.feat_val = 1.0
-#                 buf.clear()
-#                 if token == COLON:
-#                     state = FEATURE_TRAILER
-#                 else:
-#                     state = OUTSIDE
-#                     add_partial(e, partial, feat_map, audit)
-#             else:
-#                 buf += c
-#
-#         elif state == FEATURE_VAL:
-#             if token & (SPACE|FINAL|AT):
-#                 partial.feat_val = strtod(buf.c_str(), NULL)
-#                 buf.clear()
-#
-#                 if token & (SPACE|FINAL):
-#                     add_partial(e, partial, feat_map, audit)
-#                     state = OUTSIDE
-#                 else:
-#                     state = FEATURE_GROUP
-#
-#             elif token == DIGIT or c == '.':
-#                 buf += c
-#             else:
-#                 state = INVALID
-#
-#         elif state == FEATURE_TRAILER:
-#             if token == AT:
-#                 state = FEATURE_GROUP
-#             elif token == DIGIT:
-#                 state = FEATURE_VAL
-#                 buf += c
-#             else:
-#                 state = INVALID
-#
-#         elif state == FEATURE_GROUP:
-#             if token & (SPACE|FINAL):
-#                 partial.feat_group = buf
-#                 buf.clear()
-#                 add_partial(e, partial, feat_map, audit)
-#                 state = OUTSIDE
-#             else:
-#                 buf.push_back(c)
-#
-#         elif state == NS_NAME:
-#             if token & (SPACE|COLON):
-#                 partial.ns_name = buf
-#                 partial.ns_mult = 1.0
-#                 buf.clear()
-#                 state = OUTSIDE if token == SPACE else NS_VAL
-#             else:
-#                 buf += c
-#
-#         elif state == NS_VAL:
-#             if token & SPACE:
-#                 partial.ns_mult = strtod(buf.c_str(), NULL)
-#                 buf.clear()
-#                 state = OUTSIDE
-#             elif token == DIGIT or c == '.':
-#                 buf += c
-#             else:
-#                 state = INVALID
-#
-#         elif state == OUTSIDE:
-#             if token == BAR:
-#                 state = NS_NAME
-#             elif token != SPACE:
-#                 buf += c
-#                 state = FEATURE_NAME
-#
-#         else:
-#             state = INVALID
-#
-#         if state == INVALID:
-#             raise ValueError("Malformed input: {}>>>>{}<<<<{} ".format(
-#                 feature_str.substr(0, i), chr(feature_str[i]), feature_str.substr(i+1, feature_str.length())))
-#
-#
-#     return 0
-
-
-
 cdef int parse_features2(Example * e, int audit, PartialExample *partial) except -1:
     cdef:
         short inside_feature = 0
@@ -531,8 +392,6 @@ cdef int parse_features2(Example * e, int audit, PartialExample *partial) except
 
         const char *str_begin
         char *str_end
-
-    # print "\ngot", feature_str
 
     partial.feat_val = 1.0
     partial.ns_mult = 1.0
