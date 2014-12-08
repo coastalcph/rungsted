@@ -8,6 +8,7 @@ import os
 import cPickle
 import IPython
 import numpy as np
+import pandas as pd
 import sys
 from os.path import exists, join
 import time
@@ -20,7 +21,7 @@ from feat_map import HashingFeatMap, DictFeatMap
 
 from input import read_vw_seq, count_group_sizes, dropout_groups
 from timer import Timer
-from struct_perceptron import avg_loss, accuracy, update_weights
+from struct_perceptron import avg_loss, accuracy, update_weights, update_weights_confusion
 from weights import WeightVector
 
 
@@ -50,6 +51,10 @@ parser.add_argument('--labels', help="Read the set of labels from this file.")
 parser.add_argument('--drop-out', help="Regularize by randomly removing features (with probability 0.1).", action='store_true')
 parser.add_argument('--decoder', '-d', help="Use this decoder to find the best sequence given the constraints",
                     choices=('viterbi', 'viterbi_pd'), default='viterbi')
+parser.add_argument('--confusion-scaling', help="Scale updates by the values found by the rectangular matrix C."
+                                                "E.g. the gold tag is i, but the prediction is j, scale by C[i, j]. "
+                    "The matrix should be formatted as a CSV file where rows and columns are labels")
+
 
 
 args = parser.parse_args()
@@ -108,10 +113,20 @@ if not args.initial_model:
 
 logging.info("Weight vector sizes. Transition={}. Emission={}".format(wt.dims, we.dims))
 
-# Counting group sizes
+# Load confusion scaling dataset
+if args.confusion_scaling:
+    confusion_scaling_pd = pd.read_csv(args.confusion_scaling, index_col=0, encoding='utf-8')
+    confusion_scaling_pd.index = map(unicode, confusion_scaling_pd.index)
+    assert (confusion_scaling_pd.index == confusion_scaling_pd.columns).all(), "Confusion scaling matrix should be square and have identical row and column names"
+    confusion_scaling = confusion_scaling_pd.ix[labels, labels].fillna(1).values
+    logging.info("Confusion scaling. Matrix specifies {} overlapping labels with mean scaling factor {:.3f}".format(
+        len(set(labels) & set(confusion_scaling_pd.index)),
+        confusion_scaling.mean()))
+    weight_updater = update_weights_confusion
+
+
+# Corruption
 if args.train and args.drop_out:
-    # logging.info("Counting group sizes")
-    # group_sizes = count_group_sizes(train)
     corrupter = FastBinomialCorruption(0.1, feat_map, n_labels)
     # corrupter = RecycledDistributionCorruption(inverse_zipfian_sampler, feat_map, n_labels)
     # corrupter = AdversialCorruption(0.1, feat_map, n_labels)
@@ -132,7 +147,10 @@ def do_train(transition, emission):
             if args.drop_out:
                 corrupter.corrupt_sequence(sent, emission, transition)
             vit.decode(sent)
-            weight_updater(sent, transition, emission, 0.1, n_labels, feat_map)
+            if args.confusion_scaling:
+                weight_updater(sent, transition, emission, 0.1, n_labels, feat_map, confusion_scaling)
+            else:
+                weight_updater(sent, transition, emission, 0.1, n_labels, feat_map)
             n_updates += 1
             transition.n_updates = n_updates
             emission.n_updates = n_updates

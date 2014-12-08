@@ -89,6 +89,60 @@ def update_weights(Sequence sent, WeightVector transition, WeightVector emission
             transition.update2d(cur.pred_label, prev.pred_label, -alpha * cur.importance)
 
 
+def update_weights_confusion(Sequence sent, WeightVector transition, WeightVector emission, double alpha, int n_labels,
+                   FeatMap feat_map, double[:, :] confusions):
+    cdef int word_i, i
+    cdef Example cur, prev
+    cdef int pred_label, gold_label
+    cdef Feature feat
+    cdef double update_scaling = 1
+
+    # Update emission features
+    for word_i in range(len(sent)):
+        cur = sent.examples.at(word_i)
+        pred_label = cur.pred_label
+        gold_label = cur.gold_label
+
+        # Update if prediction is not correct
+        if gold_label != pred_label:
+            update_scaling = confusions[gold_label, pred_label] * alpha * cur.importance
+            for feat in cur.features:
+                new_feat_i = feat_map.feat_i_for_label(feat.index, gold_label)
+
+                emission.update(feat_map.feat_i_for_label(feat.index, gold_label),
+                           feat.value * update_scaling)
+                emission.update(feat_map.feat_i_for_label(feat.index, pred_label),
+                           -feat.value * update_scaling )
+
+            # Transition from from initial state
+            if word_i == 0:
+                transition.update2d(n_labels, gold_label, update_scaling)
+                transition.update2d(n_labels, pred_label, -update_scaling)
+
+    # Transition features
+    for word_i in range(1, len(sent)):
+        cur = sent.examples.at(word_i)
+        prev = sent.examples.at(word_i - 1)
+
+        # If any of the current or previous predictions are incorrect
+        if cur.gold_label != cur.pred_label or prev.gold_label != prev.pred_label:
+
+            # If both current and previous prediction are incorrect
+            if cur.gold_label != cur.pred_label and prev.gold_label != prev.pred_label:
+                update_scaling = alpha
+                update_scaling *= (confusions[cur.gold_label, cur.pred_label] + confusions[prev.gold_label, prev.pred_label]) / 2
+                update_scaling *= (cur.importance + prev.importance) / 2
+            # If only current prediction is incorrect
+            elif cur.gold_label != cur.pred_label:
+                update_scaling = confusions[cur.gold_label, cur.pred_label] * alpha * cur.importance
+            # If only previous prediction is incorrect
+            elif prev.gold_label != prev.pred_label:
+                update_scaling = confusions[prev.gold_label, prev.pred_label] * alpha * cur.importance
+
+            transition.update2d(cur.gold_label, prev.gold_label, update_scaling)
+            transition.update2d(cur.pred_label, prev.pred_label, -update_scaling)
+
+
 cpdef double avg_loss(list sents):
     cdef:
         Sequence sent
