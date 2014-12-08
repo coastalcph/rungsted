@@ -17,8 +17,13 @@ cython_modules = [['rungsted/feat_map.pyx', 'rungsted/MurmurHash3.cpp'],
                   ['rungsted/input.pyx'],
                   ['rungsted/decoding.pyx'],
                   ['rungsted/decoding_pd.pyx'],
-                  ['rungsted/corruption.pyx']
+                  ['rungsted/corruption.pyx'],
                   ]
+
+pwd = os.path.dirname(__file__)
+
+includes = [os.path.join(pwd, 'rungsted'),
+            os.path.join(pwd, 'src')]
 
 ext_modules = []
 
@@ -30,17 +35,28 @@ for cython_files in cython_modules:
             cython_fname = fname
             fname = fname.replace(".pyx", ".cpp")
             fname_exists = os.path.exists(fname)
+
+            # Force re-generate
+            # if fname_exists:
+            #     os.remove(fname)
+            #     fname_exists = False
+
             if not fname_exists or (fname_exists and os.path.getmtime(cython_fname) > os.path.getmtime(fname)):
+                if fname_exists:
+                    os.remove(fname)
                 print "calling cython"
-                subprocess.check_call(["cython", "--cplus", "--timestamps", cython_fname,
+                subprocess.check_call(["cython", "--cplus", cython_fname,
                                        "--output-file", fname, '-v'])
 
             if not module_name:
                 lead_path, ext = splitext(cython_fname)
+                #module_name = lead_path.split("/")[1]
                 module_name = lead_path.replace("/", ".")
 
-    source_files.append(fname)
-    ext_modules.append(Extension(module_name, sources=source_files,
+
+        source_files.append(fname)
+
+    ext_modules.append(Extension(module_name, sources=source_files, include_dirs=includes,
                        extra_compile_args=extra_compile_args, language='c++'))
 
 setup(
@@ -56,7 +72,7 @@ setup(
         "Development Status :: 3 - Alpha",
     ],
     ext_modules=ext_modules,
-    include_dirs = [np.get_include()]
+    include_dirs = [np.get_include(), 'src', '.', 'rungsted']
 )
 
 
