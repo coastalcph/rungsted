@@ -396,6 +396,8 @@ cdef int parse_features2(Example * e, int audit, PartialExample *partial) except
     partial.feat_val = 1.0
     partial.ns_mult = 1.0
     cdef string feature_str = deref(partial.feature_str)
+
+    # print "got feature str '{}'".format(feature_str)
     # Initialize with -1, a value indicating the namespace is not present
     # in the current example
     while i < feature_str.size():
@@ -419,14 +421,14 @@ cdef int parse_features2(Example * e, int audit, PartialExample *partial) except
 
         elif c == '|':
             found = feature_str.find_first_of(space_or_colon, i)
-            assert found != -1
+            assert found != npos
             partial.ns_name = feature_str.substr(i + 1, found - i - 1)
             # print "found ns '{}'".format(partial.ns_name)
             i = found
 
             if feature_str[i] == ':':
                 found = feature_str.find_first_of(space, i)
-                assert found != -1
+                assert found != npos
                 parsed_val = strtod(feature_str.c_str() + i, NULL)
                 if not parsed_val:
                     raise ValueError("Invalid namespace multiplier value")
@@ -441,8 +443,8 @@ cdef int parse_features2(Example * e, int audit, PartialExample *partial) except
         else:
             # Feature
             found = feature_str.find_first_of(space_or_colon, i)
-            assert found != -1
-            # partial.feat_name = feature_str.substr(i, found - i)
+            assert found != npos
+            # print "got feature", feature_str.substr(i, found - i)
             partial.feat_begin = i
             partial.feat_len = found - i
             if feature_str[found] == ':' and found < feature_str.size():
@@ -510,7 +512,7 @@ def read_vw_seq(filename, FeatMap feat_map, quadratic=[], ignore=[], labels=None
 
             bar_pos = line_str.find('|')
 
-            if bar_pos == -1:
+            if bar_pos == npos:
                 raise ValueError("Missing | character in example")
 
             header = line_str.substr(0, bar_pos)
@@ -519,7 +521,7 @@ def read_vw_seq(filename, FeatMap feat_map, quadratic=[], ignore=[], labels=None
                 raise ValueError("Missing label in example: {}".format(line))
 
 
-            feature_section = line_str.substr(bar_pos + 1)
+            feature_section = line_str.substr(bar_pos)
             partial.feature_str = &feature_section
             parse_features2(&e, audit, &partial)
 

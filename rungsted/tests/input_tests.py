@@ -31,3 +31,19 @@ def test_cs_weights():
     eq_(labels[token_b[1][0]], 'B')
     eq_(token_b[1][1], 0.2)
 
+def test_ignore_ns():
+    feat_map = DictFeatMap()
+
+    seqs, labels = read_vw_seq(vw_filename('ns.vw'), feat_map)
+    assert '1^a' in feat_map.feat2index_
+
+    feat_map = DictFeatMap()
+    seqs, labels = read_vw_seq(vw_filename('ns.vw'), feat_map, ignore=['1'])
+    assert '1^a' not in feat_map.feat2index_
+
+    # Longer namespaces
+    feat_map = DictFeatMap()
+    seqs, labels = read_vw_seq(vw_filename('ns.vw'), feat_map, ignore=['3'])
+    assert not any(key.startswith('3xx') for key in feat_map.feat2index_.keys())
+
+
