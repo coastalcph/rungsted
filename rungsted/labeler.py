@@ -1,4 +1,10 @@
 # coding: utf-8
+
+# Put Rungsted base directory in Python path
+import sys
+from os.path import dirname
+sys.path.append(dirname(dirname(__file__)))
+
 import argparse
 from collections import defaultdict
 import copy
@@ -51,8 +57,8 @@ parser.add_argument('--labels', help="Read the set of labels from this file.")
 parser.add_argument('--drop-out', help="Regularize by randomly removing features (with probability 0.1).", action='store_true')
 parser.add_argument('--decoder', '-d', help="Use this decoder to find the best sequence given the constraints",
                     choices=('viterbi', 'viterbi_pd'), default='viterbi')
-parser.add_argument('--confusion-scaling', help="Scale updates by the values found by the rectangular matrix C."
-                                                "E.g. the gold tag is i, but the prediction is j, scale by C[i, j]. "
+parser.add_argument('--confusion-scaling', help="Scale updates by the values found by the rectangular matrix C.\n"
+                                                "With gold tag i and prediction j, the scaling is C[i, j]. "
                     "The matrix should be formatted as a CSV file where rows and columns are labels")
 
 
