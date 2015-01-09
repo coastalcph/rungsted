@@ -11,6 +11,20 @@ def vw_filename(fname):
     return os.path.join(data_dir, fname)
 
 
+def test_weighted_features():
+    feat_map = DictFeatMap()
+    seqs, labels = read_vw_seq(vw_filename('weighted.vw'), feat_map)
+
+    expected = {'1^a': 3, '1^b': -3, '1^c': 2.5, '1^d': 1, '1^e': 1E6}
+
+    # Map feature ids to names
+    lookup = {feat_map.feat2index_[index]: val
+              for index, val in seqs[0].features[0]}
+
+    for key, val in expected.items():
+        assert key in lookup
+        eq_(lookup[key], val)
+
 def test_cs_weights():
     seqs, labels = read_vw_seq(vw_filename('cs.vw'), DictFeatMap())
     eq_(len(seqs), 1)

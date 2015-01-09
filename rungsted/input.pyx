@@ -71,6 +71,16 @@ cdef class Sequence(object):
             return "<Sequence empty>"
 
 
+    property features:
+        def __get__(self):
+            cdef Example e
+            cdef Feature feat
+
+            return [(feat.index, feat.value)
+                    for e in self.examples
+                    for feat in e.features]
+
+
     property gold_labels:
         def __get__(self):
             cdef Example e
