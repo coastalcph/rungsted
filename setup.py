@@ -45,8 +45,11 @@ for cython_files in cython_modules:
                 if fname_exists:
                     os.remove(fname)
                 print "calling cython"
-                subprocess.check_call(["cython", "--cplus", cython_fname,
-                                       "--output-file", fname, '-v'])
+                #subprocess.check_call(["cython", "--cplus", cython_fname,
+                #                       "--output-file", fname, '-v'], shell=True)
+
+                subprocess.check_call("cython --cplus {} --output-file {} -v".format(cython_fname, fname), shell=True)
+
 
             if not module_name:
                 lead_path, ext = splitext(cython_fname)
