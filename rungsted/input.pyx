@@ -457,6 +457,7 @@ cdef int parse_features2(Example * e, int audit, PartialExample *partial) except
             # print "got feature", feature_str.substr(i, found - i)
             partial.feat_begin = i
             partial.feat_len = found - i
+            partial.feat_val = 1.0
             if feature_str[found] == ':' and found < feature_str.size():
                 inside_feature = 1
             else:
