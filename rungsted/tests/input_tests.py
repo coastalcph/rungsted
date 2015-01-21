@@ -43,14 +43,18 @@ def test_cs_weights():
     eq_(labels[token_b[1][0]], 'B')
     eq_(token_b[1][1], 0.2)
 
-@nottest
 def test_importance_weights():
     seqs, labels = read_vw_seq(vw_filename('importance.vw'), DictFeatMap())
 
     eq_(len(seqs), 1, "One example")
     eq_(len(seqs[0]), 2, "Two tokens")
-    tok1, tok2 = seqs[0]
 
+    imp1, imp2 = seqs[0].importance_weights
+    eq_(imp1, 2.0)
+    eq_(imp2, 1.0)
+
+    # tok1 = seqs[0][0]
+    # tok2 = seqs[0][1]
 
     # eq_(len(seqs), 1)
     # eq_(set(labels), set(['A', 'B', 'C']))

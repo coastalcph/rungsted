@@ -80,6 +80,12 @@ cdef class Sequence(object):
                     for e in self.examples
                     for feat in e.features]
 
+    property importance_weights:
+        def __get__(self):
+            cdef Example e
+            return [e.importance for e in self.examples]
+
+
 
     property gold_labels:
         def __get__(self):
