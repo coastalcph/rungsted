@@ -1,10 +1,8 @@
 import os
-from nose.tools import eq_
+from nose.tools import eq_, nottest
 
 from rungsted.feat_map import DictFeatMap
 from rungsted.input import read_vw_seq
-
-
 
 def vw_filename(fname):
     data_dir = os.path.join(os.path.dirname(__file__), 'data')
@@ -18,8 +16,8 @@ def test_weighted_features():
     expected = {'1^a': 3, '1^b': -3, '1^c': 2.5, '1^d': 1, '1^e': 1E6}
 
     # Map feature ids to names
-    lookup = {feat_map.feat2index_[index]: val
-              for index, val in seqs[0].features[0]}
+    index2feat = {idx: feat_name for feat_name, idx in feat_map.feat2index_.items()}
+    lookup = {index2feat[index]: val for index, val in seqs[0].features}
 
     for key, val in expected.items():
         assert key in lookup
@@ -44,6 +42,34 @@ def test_cs_weights():
 
     eq_(labels[token_b[1][0]], 'B')
     eq_(token_b[1][1], 0.2)
+
+@nottest
+def test_importance_weights():
+    seqs, labels = read_vw_seq(vw_filename('importance.vw'), DictFeatMap())
+
+    eq_(len(seqs), 1, "One example")
+    eq_(len(seqs[0]), 2, "Two tokens")
+    tok1, tok2 = seqs[0]
+
+
+    # eq_(len(seqs), 1)
+    # eq_(set(labels), set(['A', 'B', 'C']))
+    #
+    # label_costs = seqs[0].label_costs
+    #
+    # # First token
+    # token_a = label_costs[0]
+    # eq_(labels[token_a[0][0]], 'C')
+    # eq_(token_a[0][1], 0.5)
+    #
+    # # Second token
+    # token_b = label_costs[1]
+    # eq_(labels[token_b[0][0]], 'A')
+    # eq_(token_b[0][1], 0.1)
+
+
+
+
 
 def test_ignore_ns():
     feat_map = DictFeatMap()
