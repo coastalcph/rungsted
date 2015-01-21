@@ -16,7 +16,6 @@ def taskar12(words, cpos_tags, i):
     feats.append("w={}".format(norm))
     feats.append("suf2={}".format(norm[-2:]))
     feats.append("suf3={}".format(norm[-3:]))
-    feats.append("uppercased")
 
     if word[0].isupper():
         feats.append("uppercased")
