@@ -16,7 +16,6 @@ cython_modules = [['rungsted/feat_map.pyx', 'rungsted/MurmurHash3.cpp'],
                   ['rungsted/struct_perceptron.pyx'],
                   ['rungsted/input.pyx'],
                   ['rungsted/decoding.pyx'],
-                  ['rungsted/decoding_pd.pyx'],
                   ['rungsted/corruption.pyx'],
                   ]
 

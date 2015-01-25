@@ -21,7 +21,6 @@ from os.path import exists, join
 import time
 
 from decoding import Viterbi as ViterbiStd
-from decoding_pd import Viterbi as ViterbiPd
 from corruption import FastBinomialCorruption, RecycledDistributionCorruption, inverse_zipfian_sampler, \
     AdversialCorruption
 from feat_map import HashingFeatMap, DictFeatMap
@@ -56,8 +55,6 @@ parser.add_argument('--audit', help="Print the interpretation of the input files
 parser.add_argument('--name', help="Identify this invocation by NAME (use in conjunction with --append-test).")
 parser.add_argument('--labels', help="Read the set of labels from this file.")
 parser.add_argument('--drop-out', help="Regularize by randomly removing features (with probability 0.1).", action='store_true')
-parser.add_argument('--decoder', '-d', help="Use this decoder to find the best sequence given the constraints",
-                    choices=('viterbi', 'viterbi_pd'), default='viterbi')
 parser.add_argument('--confusion-scaling', help="Scale updates by the values found by the rectangular matrix C.\n"
                                                 "With gold tag i and prediction j, the scaling is C[i, j]. "
                     "The matrix should be formatted as a CSV file where rows and columns are labels")
@@ -142,7 +139,8 @@ else:
     group_sizes = None
 n_updates = 0
 
-Viterbi = ViterbiStd if args.decoder == 'viterbi' else ViterbiPd
+# Only one decoder supported at the moment
+Viterbi = ViterbiStd
 
 def do_train(transition, emission):
     vit = Viterbi(n_labels, transition, emission, feat_map)
