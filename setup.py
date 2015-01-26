@@ -1,6 +1,7 @@
 import os
 from os.path import splitext
 import subprocess
+import platform
 from setuptools import setup, Extension
 import numpy as np
 
@@ -8,8 +9,13 @@ def read(fname):
     return open(os.path.join(os.path.dirname(__file__), fname)).read()
 
 
+mac_version_str, _, _ = platform.mac_ver()
+
 extra_compile_args = ['-Wno-deprecated', '-Wno-unused-function', '-Wno-#warnings', '-Wno-deprecated-writable-strings',
-                      '-std=c++11', '-stdlib=libc++', '-mmacosx-version-min=10.8']
+                      '-std=c++11']
+
+if mac_version_str:
+    extra_compile_args.extend(['-stdlib=libc++', '-mmacosx-version-min=10.8'])
 
 cython_modules = [['rungsted/feat_map.pyx', 'rungsted/MurmurHash3.cpp'],
                   ['rungsted/weights.pyx'],
