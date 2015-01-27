@@ -175,7 +175,7 @@ def update_weights_cs_sample(Sequence sent, WeightVector transition, WeightVecto
             chosen_label_index = np.random.choice(np.arange(len(cur.labels)), p=sample_p)
             chosen_label = cur.labels[chosen_label_index]
             # print sample_p, chosen_label_index
-            pred_cost = 1
+
             # Negative update
             for feat in cur.features:
                 emission.update(feat_map.feat_i_for_label(feat.index, cur.pred_label), -feat.value * alpha * pred_cost)
@@ -184,7 +184,7 @@ def update_weights_cs_sample(Sequence sent, WeightVector transition, WeightVecto
             # Positive update
             for feat in cur.features:
                 # TODO scale by difference between the `pred_cost` and the `chosen_label.cost`
-                emission.update(feat_map.feat_i_for_label(feat.index, chosen_label.label), feat.value * alpha * pred_cost)
+                emission.update(feat_map.feat_i_for_label(feat.index, chosen_label.label), feat.value * alpha * (pred_cost - chosen_label.cost))
 
     update_transition_cs_sample(sent, transition, alpha, n_labels)
 
