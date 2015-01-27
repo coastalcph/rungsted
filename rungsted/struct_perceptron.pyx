@@ -181,10 +181,20 @@ def update_weights_cs_sample(Sequence sent, WeightVector transition, WeightVecto
                 emission.update(feat_map.feat_i_for_label(feat.index, cur.pred_label), -feat.value * alpha * pred_cost)
 
 
+
             # Positive update
-            for feat in cur.features:
-                # TODO scale by difference between the `pred_cost` and the `chosen_label.cost`
-                emission.update(feat_map.feat_i_for_label(feat.index, chosen_label.label), feat.value * alpha * (pred_cost - chosen_label.cost))
+            for sample_i, p in enumerate(sample_p):
+                if p > 0:
+                    for feat in cur.features:
+                        emission.update(feat_map.feat_i_for_label(feat.index, cur.labels[sample_i].label), feat.value * alpha * p)
+
+
+            # # Positive update
+            # for feat in cur.features:
+            #     # TODO scale by difference between the `pred_cost` and the `chosen_label.cost`
+            #     emission.update(feat_map.feat_i_for_label(feat.index, chosen_label.label), feat.value * alpha * (pred_cost - chosen_label.cost))
+
+
 
     update_transition_cs_sample(sent, transition, alpha, n_labels)
 
