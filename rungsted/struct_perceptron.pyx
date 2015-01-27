@@ -165,16 +165,23 @@ def update_weights_cs_sample(Sequence sent, WeightVector transition, WeightVecto
         pred_cost = example_cost(cur, cur.pred_label)
 
         if pred_cost > .0:
+            sample_p = np.array([pred_cost - label_cost.cost for label_cost in cur.labels])
+            sample_p[sample_p < 0] = 0
+            sample_p_sum = sample_p.sum()
+            if sample_p_sum <= 0:
+                continue
+
+            sample_p /= sample_p_sum
+            chosen_label_index = np.random.choice(np.arange(len(cur.labels)), p=sample_p)
+            chosen_label = cur.labels[chosen_label_index]
+            # print sample_p, chosen_label_index
+
             # Negative update
             for feat in cur.features:
                 emission.update(feat_map.feat_i_for_label(feat.index, cur.pred_label), -feat.value * alpha * pred_cost)
 
-            sample_p = np.array([pred_cost - label_cost.cost for label_cost in cur.labels])
-            sample_p[sample_p < 0] = 0
-            sample_p /= sample_p.sum()
-            chosen_label_index = np.random.choice(np.arange(len(cur.labels)), p=sample_p)
-            chosen_label = cur.labels[chosen_label_index]
 
+            # Positive update
             for feat in cur.features:
                 # TODO scale by difference between the `pred_cost` and the `chosen_label.cost`
                 emission.update(feat_map.feat_i_for_label(feat.index, chosen_label.label), feat.value * alpha * pred_cost)
