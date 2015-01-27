@@ -175,7 +175,7 @@ def update_weights_cs_sample(Sequence sent, WeightVector transition, WeightVecto
             chosen_label_index = np.random.choice(np.arange(len(cur.labels)), p=sample_p)
             chosen_label = cur.labels[chosen_label_index]
             # print sample_p, chosen_label_index
-
+            pred_cost = 1
             # Negative update
             for feat in cur.features:
                 emission.update(feat_map.feat_i_for_label(feat.index, cur.pred_label), -feat.value * alpha * pred_cost)
