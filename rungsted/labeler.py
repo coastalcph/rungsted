@@ -27,7 +27,7 @@ from feat_map import HashingFeatMap, DictFeatMap
 
 from input import read_vw_seq, count_group_sizes, dropout_groups
 from timer import Timer
-from struct_perceptron import avg_loss, accuracy, update_weights, update_weights_confusion
+from struct_perceptron import avg_loss, accuracy, update_weights, update_weights_confusion, update_weights_cs_sample
 from weights import WeightVector
 
 
@@ -72,6 +72,11 @@ else:
     feat_map = DictFeatMap()
 
 weight_updater = update_weights
+if args.cost_sensitive:
+    weight_updater = update_weights_cs_sample
+
+
+
 if args.labels:
     labels = [line.strip() for line in open(args.labels)]
 else:

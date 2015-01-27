@@ -10,8 +10,10 @@ import random
 import cython
 
 from feat_map cimport FeatMap
-from input cimport Example, Feature, Sequence, example_cost
+from input cimport Example, Feature, Sequence, example_cost, LabelCost
 from weights cimport WeightVector
+
+import numpy as np
 
 from libc.stdlib cimport rand
 cdef extern from "limits.h":
@@ -142,6 +144,97 @@ def update_weights_confusion(Sequence sent, WeightVector transition, WeightVecto
             transition.update2d(cur.gold_label, prev.gold_label, update_scaling)
             transition.update2d(cur.pred_label, prev.pred_label, -update_scaling)
 
+
+
+
+
+def update_weights_cs_sample(Sequence sent, WeightVector transition, WeightVector emission, double alpha, int n_labels,
+                      FeatMap feat_map):
+    cdef:
+        int word_i, i
+        Example cur, prev
+        int label
+        Feature feat
+        double pred_cost, cost, total_inv_cost
+        LabelCost label_cost, chosen_label
+
+
+    # Update emission features
+    for word_i in range(len(sent)):
+        cur = sent.examples[word_i]
+        pred_cost = example_cost(cur, cur.pred_label)
+
+        if pred_cost > .0:
+            # Negative update
+            for feat in cur.features:
+                emission.update(feat_map.feat_i_for_label(feat.index, cur.pred_label), -feat.value * alpha * pred_cost)
+
+            sample_p = np.array([pred_cost - label_cost.cost for label_cost in cur.labels])
+            sample_p[sample_p < 0] = 0
+            sample_p /= sample_p.sum()
+            chosen_label_index = np.random.choice(np.arange(len(cur.labels)), p=sample_p)
+            chosen_label = cur.labels[chosen_label_index]
+
+            for feat in cur.features:
+                # TODO scale by difference between the `pred_cost` and the `chosen_label.cost`
+                emission.update(feat_map.feat_i_for_label(feat.index, chosen_label.label), feat.value * alpha * pred_cost)
+
+    update_transition_cs_sample(sent, transition, alpha, n_labels)
+
+
+    #@cython.cdivision(True)
+cdef update_transition_cs_sample(Sequence sent, WeightVector transition, double alpha, int n_labels):
+    cdef:
+        int word_i
+        Example cur, prev
+        double bigram_pred_cost, bigram_cost, total_bigram_inv_cost, this_bigram_factor
+        int label_cur, label_prev
+
+
+    # Transition from start state
+    if len(sent) > 0:
+        cur = sent.examples[0]
+        if cur.pred_cost > 0:
+            pass
+            # transition.update2d(n_labels, cur.pred_label - 1, -alpha * cur.pred_cost)
+            # TODO positive update
+
+            #transition.update2d(n_labels, cur.gold_label - 1, alpha * cur.pred_cost)
+
+
+    # Internal transitions
+    for word_i in range(1, len(sent)):
+        cur = sent.examples[word_i]
+        prev = sent.examples[word_i - 1]
+
+        bigram_pred_cost = (example_cost(cur, cur.pred_label) + example_cost(prev, prev.pred_label))
+
+        # If cost of current or previous prediction is not zero
+        if bigram_pred_cost > 0:
+            samples = [(cur_label_cost.label, prev_label_cost.label, bigram_pred_cost - (cur_label_cost.cost + prev_label_cost.cost))
+                       for cur_label_cost in cur.labels for prev_label_cost in prev.labels]
+
+            sample_p = np.array([tup[2] for tup in samples])
+            sample_p[sample_p < 0] = 0
+            sum_of_sample_p = sample_p.sum()
+            if sample_p.sum() <= 0:
+                continue
+
+            sample_p /= sum_of_sample_p
+
+            # print "bigram_pred_cost", bigram_pred_cost
+            # print samples, sample_p
+
+            chosen_sample_index = np.random.choice(np.arange(len(samples)), p=sample_p)
+
+            cur_label = samples[chosen_sample_index][0]
+            prev_label = samples[chosen_sample_index][1]
+
+            # Negative update
+            transition.update2d(cur.pred_label, prev.pred_label, -alpha * bigram_pred_cost)
+
+            # Positive update
+            transition.update2d(cur_label, prev_label, alpha * bigram_pred_cost)
 
 cpdef double avg_loss(list sents):
     cdef:
