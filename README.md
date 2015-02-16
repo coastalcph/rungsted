@@ -8,6 +8,10 @@ Use
 
 Building with the above command happens *in place*, leaving the generated C and C++ files in the source directory for inspection. Changes in dependent modules are unfortunately not picked up by the build system. Whenever you need to start from a clean slate, use the supplied `clean.sh` script to get rid of the generated files. 
 
+The build script requires a recent version of Cython. If you don't have Cython, it can be installed as below: 
+
+``pip install cython``
+
 ### Demo
 
 The repository contains a subset of the part-of-speech tagged Brown corpus. To run the structured perceptron labeler on this dataset, use:
