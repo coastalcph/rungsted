@@ -1,6 +1,18 @@
 def normalize_word(word):
     return word.replace(":", "COL")
 
+def normalize_label(label):
+    norm_label = label.replace("``", "O_QUOT")\
+        .replace("''", "C_QUOT")\
+        .replace("'", "S_QUOT")\
+        .replace(':', 'COL')\
+        .replace('?', 'QMARK')
+
+    if not len(norm_label):
+        norm_label = "*EMPTY*"
+
+    return norm_label
+
 
 def taskar12(words, cpos_tags, i):
     # Features from http://www.seas.upenn.edu/~taskar/pubs/wikipos_emnlp12.pdf,

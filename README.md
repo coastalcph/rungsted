@@ -14,46 +14,17 @@ The build script requires a recent version of Cython. If you don't have Cython, 
 
 ### Demo
 
-The repository contains a subset of the part-of-speech tagged Brown corpus. To run the structured perceptron labeler on this dataset, use:
+The repository contains a subset of the part-of-speech tagged Brown corpus. To run the structured perceptron labeler on this dataset, execute:
 
 ``python src/labeler.py --train data/brown.train --test data/brown.test.vw``
 
-## Usage
+Rungsted's input format is closely modeled on the powerful and flexible format of [Vowpal Wabbit](https://github.com/JohnLangford/vowpal_wabbit/wiki/Input-format),
+with the exception that Rungsted is perfectly fine with labels that are not integers.
 
+### Datasets
 
-```
-usage: labeler.py [-h] [--train TRAIN] [--test TEST] [--hash-bits HASH_BITS]
-                  [--passes PASSES] [--predictions PREDICTIONS]
-                  [--ignore [IGNORE [IGNORE ...]]]
-                  [--quadratic [QUADRATIC [QUADRATIC ...]]] [--shuffle]
-                  [--no-average] [--initial-model INITIAL_MODEL]
-                  [--final-model FINAL_MODEL] [--cost-sensitive] [--audit]
+Provided you have a working installation of NLTK, you can recreate the Brown dataset with this command. 
 
-Structured perceptron tagger
+``python rungsted/datasets/cr_brown_pos_data.py data/brown.train.vw data/brown.test.vw``
 
-optional arguments:
-  -h, --help            show this help message and exit
-  --train TRAIN         Training data (vw format)
-  --test TEST           Test data (vw format)
-  --hash-bits HASH_BITS, -b HASH_BITS
-                        Size of feature vector in bits (2**b)
-  --passes PASSES       Number of passes over the training set
-  --predictions PREDICTIONS, -p PREDICTIONS
-                        File for outputting predictions
-  --ignore [IGNORE [IGNORE ...]]
-                        One-character prefix of namespaces to ignore
-  --quadratic [QUADRATIC [QUADRATIC ...]], -q [QUADRATIC [QUADRATIC ...]]
-                        Combine features in these two namespace, identified by
-                        a one-character prefix of their name':' is a short-
-                        hand for all namespaces
-  --shuffle             Shuffle examples after each iteration
-  --no-average          Do not average over all updates
-  --initial-model INITIAL_MODEL, -i INITIAL_MODEL
-                        Initial model from this file
-  --final-model FINAL_MODEL, -f FINAL_MODEL
-                        Save model here after training
-  --cost-sensitive, --cs
-                        Cost-sensitive weight updates
-  --audit               Print the interpretation of the input files to
-                        standard out. Useful for debugging
-```
+There is also a script `rungsted/datasets/conll_to_vw.py` to convert from CONLL-formatted input to Rungsted 

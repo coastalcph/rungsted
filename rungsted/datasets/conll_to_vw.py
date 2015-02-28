@@ -14,7 +14,7 @@ Options:
 import codecs
 from collections import defaultdict
 from docopt import docopt
-from pos_features import taskar12, honnibal13, honnibal13_groups
+from pos_features import taskar12, honnibal13, honnibal13_groups, normalize_label, normalize_word
 
 if __name__ == '__main__':
     args = docopt(__doc__)
@@ -27,15 +27,6 @@ if __name__ == '__main__':
         'honnibal13': honnibal13,
         'honnibal13-groups': honnibal13_groups
     }[args['--feature-set']]
-
-    def normalize_word(word):
-        return word.replace(":", "COL")
-
-    def normalize_label(label):
-        return label.replace("``", "O_QUOT")\
-            .replace("''", "C_QUOT")\
-            .replace(':', 'COL')\
-            .replace('?', 'QMARK')
 
     def output_sentence(sent):
         label_key = 'cpos' if args['--coarse'] else 'pos'
