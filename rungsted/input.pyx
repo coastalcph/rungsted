@@ -41,7 +41,7 @@ from libc.stdlib cimport rand
 
 DEF MAX_LEN = 2048
 DEF MAX_FEAT_NAME_LEN = 1024
-cdef char* DEFAULT_NS = ""
+cdef const char * DEFAULT_ID = "default"
 # FIXME should really be imported from the string
 cdef size_t npos = -1
 
@@ -326,6 +326,9 @@ cdef int parse_header(string header, dict label_map, Example * e, int audit) exc
     if len(e.labels) == 1:
         e.gold_label = e.labels[0].label
 
+    # If no id was set, assign a default
+    if e.id_ == NULL:
+        e.id_ = strdup(DEFAULT_ID)
 
     if audit:
         for constraint in e.constraints:
