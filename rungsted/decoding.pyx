@@ -9,11 +9,11 @@ import numpy as np
 #cimport numpy as np
 import time
 
-from feat_map cimport FeatMap
-from input cimport Example, Sequence, Feature, example_cost
-from struct_perceptron cimport e_score
+from rungsted.feat_map cimport FeatMap
+from rungsted.input cimport Example, Sequence, Feature, example_cost
+from rungsted.struct_perceptron cimport e_score
 
-from weights cimport WeightVector
+from rungsted.weights cimport WeightVector
 
 cdef extern from "math.h":
     float INFINITY
@@ -197,7 +197,7 @@ def benchmark_viterbi_fill_trellis():
         viterbi_fill_trellis(e_scores, t_scores, trellis, path)
     elapsed = time.time() - start_time
     tokens_per_sec = int((n_rounds * n_words) / elapsed)
-    print "{:.2f} secs elapsed; {} tokens/sec".format(elapsed, tokens_per_sec)
+    print("{:.2f} secs elapsed; {} tokens/sec".format(elapsed, tokens_per_sec))
 
 
 

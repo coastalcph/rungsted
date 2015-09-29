@@ -1,5 +1,4 @@
 
-
 from libc.stdio cimport FILE, sscanf
 from libc.stdint cimport uint8_t
 from libc.stdlib cimport free, malloc
@@ -13,7 +12,7 @@ import numpy as np
 cimport numpy as cnp
 from cpython cimport array
 
-from feat_map cimport FeatMap, hash_str
+from rungsted.feat_map cimport FeatMap, hash_str
 
 cnp.import_array()
 
@@ -41,7 +40,7 @@ from libc.stdlib cimport rand
 
 DEF MAX_LEN = 2048
 DEF MAX_FEAT_NAME_LEN = 1024
-cdef const char * DEFAULT_ID = "default"
+cdef const char * DEFAULT_ID = b"default"
 # FIXME should really be imported from the string
 cdef size_t npos = -1
 
@@ -257,7 +256,7 @@ cdef LabelCost map_label(string label_def, dict label_map):
         double cost = 0.0
         int colon_pos
 
-    colon_pos = label_def.find(':')
+    colon_pos = label_def.find(b':')
     if colon_pos != npos:
         label_name = label_def.substr(0, colon_pos)
         cost = strtod(label_def.substr(colon_pos + 1).c_str(), NULL)
@@ -278,7 +277,7 @@ cdef vector[string] tokenize_header(string header):
         vector[string] results
         int begin = 0
         int found
-        string space = " "
+        string space = b' '
 
     while True:
         found = header.find(space, begin+1)
@@ -300,10 +299,10 @@ cdef int parse_header(string header, dict label_map, Example * e, int audit) exc
         vector[string] tokens = tokenize_header(header)
 
     for token in tokens:
-        if token[0] == '?':
+        if token[0] == b'?':
             label_cost = map_label(token.substr(1), label_map)
             e.constraints.push_back(label_cost.label)
-        elif token[0] == '\'':
+        elif token[0] == b'\'':
             e.id_ = strdup(token.substr(1).c_str())
         elif isdigit(token[0]):
             # Tokens starting with a digit can be either
@@ -311,7 +310,7 @@ cdef int parse_header(string header, dict label_map, Example * e, int audit) exc
             #  - an importance weight, e.g. 0.75
             # Thus if the string contains a colon, it is a label, and
             # if it contains a dot but not colon, it is an importance weight.
-            if token.find(".") != npos and token.find(":") == npos:
+            if token.find(b'.') != npos and token.find(b':') == npos:
                 e.importance = strtod(token.c_str(), NULL)
 
                 if e.importance < 0:
@@ -332,11 +331,11 @@ cdef int parse_header(string header, dict label_map, Example * e, int audit) exc
 
     if audit:
         for constraint in e.constraints:
-            print "?{}".format(constraint),
+            print("?{}".format(constraint), end=' ')
         for label_cost in e.labels:
-            print "{}:{}".format(label_cost.label, label_cost.cost),
-        print "imp={}".format(e.importance),
-        print "'{}|".format(e.id_),
+            print("{}:{}".format(label_cost.label, label_cost.cost), end=' ')
+        print("imp={}".format(e.importance), end=' ')
+        print("'{}|".format(e.id_), end=' ')
 
     return 0
 
@@ -373,7 +372,7 @@ cdef void add_partial(Example *example, PartialExample *partial, int audit):
 
     cdef int ns_name_len = partial.ns_name.size()
 
-    partial.ns_name.push_back("^")
+    partial.ns_name.push_back(b"^")
     partial.ns_name.append(deref(partial.feature_str), partial.feat_begin, partial.feat_len)
     feat_i = feat_map.feat_i(partial.ns_name)
 
@@ -391,7 +390,7 @@ cdef void add_partial(Example *example, PartialExample *partial, int audit):
         example.features.push_back(feat)
 
         if audit:
-            print "{}:{}=>{}".format(partial.ns_name, feat.value, feat.index),
+            print("{}:{}=>{}".format(partial.ns_name, feat.value, feat.index), end=' ')
 
     partial.ns_name.resize(ns_name_len)
 
@@ -405,9 +404,9 @@ cdef int parse_features2(Example * e, int audit, PartialExample *partial) except
         int i = 0, found, head = 0, read
         char c
         double parsed_val
-        string number_like = "0123456789.+-"
-        string space = " \n"
-        string space_or_colon = ": \n"
+        string number_like = b"0123456789.+-"
+        string space = b" \n"
+        string space_or_colon = b": \n"
 
         const char *str_begin
         char *str_end
@@ -438,14 +437,14 @@ cdef int parse_features2(Example * e, int audit, PartialExample *partial) except
             else:
                 raise ValueError("Invalid feature declaration (after ':'). Rest of line: {}".format(feature_str.substr(i)))
 
-        elif c == '|':
+        elif c == b'|':
             found = feature_str.find_first_of(space_or_colon, i)
             assert found != npos
             partial.ns_name = feature_str.substr(i + 1, found - i - 1)
             # print "found ns '{}'".format(partial.ns_name)
             i = found
 
-            if feature_str[i] == ':':
+            if feature_str[i] == b':':
                 found = feature_str.find_first_of(space, i)
                 assert found != npos
                 parsed_val = strtod(feature_str.c_str() + i, NULL)
@@ -454,10 +453,10 @@ cdef int parse_features2(Example * e, int audit, PartialExample *partial) except
                 partial.ns_mult = parsed_val
                 # print "ns multiplier", partial.ns_mult
                 i = found
-        elif c == ' ':
+        elif c == b' ':
             # Skip space
             i += 1
-        elif c == "\n":
+        elif c == b'\n':
             i += 1
         else:
             # Feature
@@ -467,7 +466,7 @@ cdef int parse_features2(Example * e, int audit, PartialExample *partial) except
             partial.feat_begin = i
             partial.feat_len = found - i
             partial.feat_val = 1.0
-            if feature_str[found] == ':' and found < feature_str.size():
+            if feature_str[found] == b':' and found < feature_str.size():
                 inside_feature = 1
             else:
                 add_partial(e, partial, audit)
@@ -495,7 +494,7 @@ def read_vw_seq(filename, FeatMap feat_map, quadratic=[], ignore=[], labels=None
         PartialExample partial
         string line_str
         string feature_section
-        string new_line = "\n"
+        string new_line = b'\n'
 
     label_map = {}
     if labels:
@@ -508,7 +507,7 @@ def read_vw_seq(filename, FeatMap feat_map, quadratic=[], ignore=[], labels=None
     e = example_new(dataset)
     seq = Sequence()
 
-    cfile = fopen(filename, "rb")
+    cfile = fopen(bytes(filename, encoding='utf-8'), b"rb")
 
 
     if cfile == NULL:
@@ -524,13 +523,13 @@ def read_vw_seq(filename, FeatMap feat_map, quadratic=[], ignore=[], labels=None
             break
 
         line_str = string(line)
-        if line_str[line_str.size() - 1] != "\n":
-            line_str.push_back("\n")
+        if line_str[line_str.size() - 1] != b'\n':
+            line_str.push_back(b'\n')
 
         if line_str.size() > 1:
             e = example_new(dataset)
 
-            bar_pos = line_str.find('|')
+            bar_pos = line_str.find(b'|')
 
             if bar_pos == npos:
                 raise ValueError("Missing | character in example")
@@ -546,12 +545,12 @@ def read_vw_seq(filename, FeatMap feat_map, quadratic=[], ignore=[], labels=None
             parse_features2(&e, audit, &partial)
 
             # Add constant feature
-            add_feature(&e, feat_map.feat_i("^Constant"), 1, -1)
+            add_feature(&e, feat_map.feat_i(b"^Constant"), 1, -1)
 
             seq.examples.push_back(e)
 
             if audit:
-                print ""
+                print("")
 
         else:
             # Empty line. Multiple empty lines after each other are ignored

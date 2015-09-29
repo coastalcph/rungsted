@@ -9,9 +9,9 @@ from libc.stdint cimport uint32_t, int32_t, int64_t, uint64_t
 import random
 import cython
 
-from feat_map cimport FeatMap
-from input cimport Example, Feature, Sequence, example_cost, LabelCost
-from weights cimport WeightVector
+from rungsted.feat_map cimport FeatMap
+from rungsted.input cimport Example, Feature, Sequence, example_cost, LabelCost
+from rungsted.weights cimport WeightVector
 
 import numpy as np
 

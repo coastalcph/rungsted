@@ -2,9 +2,9 @@
 #cython: nonecheck=False
 #cython: wraparound=False
 
-from feat_map cimport FeatMap
-from input cimport Example, Sequence
-from weights cimport WeightVector
+from rungsted.feat_map cimport FeatMap
+from rungsted.input cimport Example, Sequence
+from rungsted.weights cimport WeightVector
 
 import numpy as np
 # cimport numpy as np

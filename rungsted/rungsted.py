@@ -12,7 +12,8 @@ import copy
 import json
 import logging
 import os
-import cPickle
+# Perhaps import cPickle if Python version < 3.0
+import pickle
 import IPython
 import numpy as np
 import pandas as pd
@@ -20,15 +21,15 @@ import sys
 from os.path import exists, join
 import time
 
-from decoding import Viterbi as ViterbiStd
-from corruption import FastBinomialCorruption, RecycledDistributionCorruption, inverse_zipfian_sampler, \
+from rungsted.decoding import Viterbi as ViterbiStd
+from rungsted.corruption import FastBinomialCorruption, RecycledDistributionCorruption, inverse_zipfian_sampler, \
     AdversialCorruption
-from feat_map import HashingFeatMap, DictFeatMap
+from rungsted.feat_map import HashingFeatMap, DictFeatMap
 
-from input import read_vw_seq, count_group_sizes, dropout_groups
-from timer import Timer
-from struct_perceptron import avg_loss, accuracy, update_weights, update_weights_confusion, update_weights_cs_sample
-from weights import WeightVector
+from rungsted.input import read_vw_seq, count_group_sizes, dropout_groups
+from rungsted.timer import Timer
+from rungsted.struct_perceptron import avg_loss, accuracy, update_weights, update_weights_confusion, update_weights_cs_sample
+from rungsted.weights import WeightVector
 
 
 logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
@@ -60,8 +61,13 @@ parser.add_argument('--confusion-scaling', help="Scale updates by the values fou
                     "The matrix should be formatted as a CSV file where rows and columns are labels")
 
 
-
 args = parser.parse_args()
+
+if not (args.train or args.test):
+    print("Error: Must specify either a training or a test file", file=sys.stderr)
+    parser.print_usage()
+    exit(1)
+
 
 timers = defaultdict(lambda: Timer())
 logging.info("Tagger started. \nCalled with {}".format(args))
@@ -87,7 +93,7 @@ if args.initial_model:
     we = WeightVector.load(join(args.initial_model, 'emission.npz'))
     labels = list(np.load(join(args.initial_model, 'labels.npy')))
     if not args.hash_bits:
-        feat_map.feat2index_ = cPickle.load(open(join(args.initial_model, 'feature_map.pickle')))
+        feat_map.feat2index_ = pickle.load(open(join(args.initial_model, 'feature_map.pickle')))
 
 train = None
 if args.train:
@@ -125,7 +131,6 @@ logging.info("Weight vector sizes. Transition={}. Emission={}".format(wt.dims, w
 # Load confusion scaling dataset
 if args.confusion_scaling:
     confusion_scaling_pd = pd.read_csv(args.confusion_scaling, index_col=0, encoding='utf-8')
-    confusion_scaling_pd.index = map(unicode, confusion_scaling_pd.index)
     assert (confusion_scaling_pd.index == confusion_scaling_pd.columns).all(), "Confusion scaling matrix should be square and have identical row and column names"
     confusion_scaling = confusion_scaling_pd.ix[labels, labels].fillna(1).values
     logging.info("Confusion scaling. Matrix specifies {} overlapping labels with mean scaling factor {:.3f}".format(
@@ -166,10 +171,10 @@ def do_train(transition, emission):
             emission.n_updates = n_updates
 
             if n_updates % 1000 == 0:
-                print >>sys.stderr, '\r[{}] {}k sentences total'.format(epoch, n_updates / 1000),
+                print('\r[{}] {}k sentences total'.format(epoch, n_updates / 1000), file=sys.stderr)
 
         epoch_msg = "[{}] train loss={:.4f} ".format(epoch, avg_loss(train))
-        print >>sys.stderr, "\r{}{}".format(epoch_msg, " "*72)
+        print("\r{}{}".format(epoch_msg, " "*72), file=sys.stderr)
 
     timers['train'].end()
     if args.average:
@@ -177,8 +182,9 @@ def do_train(transition, emission):
         emission.average()
 
     tokens_trained = epoch * sum(len(seq) for seq in train)
-    print >>sys.stderr, "Training took {:.2f} secs. {} words/sec".format(timers['train'].elapsed(),
-                                                                         int(tokens_trained / timers['train'].elapsed()))
+    print("Training took {:.2f} secs. {} words/sec".format(timers['train'].elapsed(),
+                                                                         int(tokens_trained / timers['train'].elapsed())),
+          file=sys.stderr)
 def do_test(transition, emission):
     vit = Viterbi(n_labels, transition, emission, feat_map)
 
@@ -187,23 +193,24 @@ def do_test(transition, emission):
         labels_map = dict((i, label_str) for i, label_str in enumerate(test_labels))
         for sent_i, sent in enumerate(test):
             if sent_i > 0:
-                print >>out, ""
+                print("", file=out)
             vit.decode(sent)
             for example_id, gold_label, pred_label in zip(sent.ids, sent.gold_labels, sent.pred_labels):
-                print >>out, "{}\t{}\t{}".format(example_id, labels_map[gold_label], labels_map[pred_label])
+                print("{}\t{}\t{}".format(example_id, labels_map[gold_label], labels_map[pred_label]), file=out)
 
 
     timers['test'].end()
     logging.info("Accuracy: {:.3f}".format(accuracy(test)))
-    print >>sys.stderr, "Test took {:.2f} secs. {} words/sec".format(timers['test'].elapsed(),
-                                                                         int(sum(len(seq) for seq in test) / timers['test'].elapsed()))
+    print("Test took {:.2f} secs. {} words/sec".format(timers['test'].elapsed(),
+                                                                         int(sum(len(seq) for seq in test) / timers['test'].elapsed())),
+          file=sys.stderr)
 
     if args.append_test:
         with open(args.append_test, 'a') as result_file:
             result = {'accuracy': accuracy(test), 'name': args.name}
             result.update(args.__dict__)
             json.dump(result, result_file)
-            print >>result_file, ""
+            print("", file=result_file)
 
 
 # Training
@@ -244,6 +251,6 @@ if args.final_model:
     json.dump(args.__dict__, open(join(args.final_model, 'settings.json'), 'w'))
 
     if not args.hash_bits:
-        cPickle.dump(feat_map.feat2index_,
+        pickle.dump(feat_map.feat2index_,
                      open(join(args.final_model, 'feature_map.pickle'), 'w'), protocol=2)
 

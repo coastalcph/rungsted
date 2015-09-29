@@ -49,11 +49,7 @@ for cython_files in cython_modules:
             if not fname_exists or (fname_exists and os.path.getmtime(cython_fname) > os.path.getmtime(fname)):
                 if fname_exists:
                     os.remove(fname)
-                print "calling cython"
-                #subprocess.check_call(["cython", "--cplus", cython_fname,
-                #                       "--output-file", fname, '-v'], shell=True)
-
-                subprocess.check_call("cython --cplus {} --output-file {} -v".format(cython_fname, fname), shell=True)
+                subprocess.check_call("cython -3 --cplus {} --output-file {} -v".format(cython_fname, fname), shell=True)
 
 
             if not module_name:
@@ -72,12 +68,19 @@ setup(
     version="0.1",
     author="Anders Johannsen",
     author_email="ajohannsen@hum.ku.dk",
-    description=("Rungsted. A structured perceptron sequential tagger"),
+    description=("Rungsted. A very fast HMM-based structured prediction model for sequential labeling tasks. "
+                 "Implements the structured perceptron with lots of extras, such as cost-sensitive updates."),
     keywords="hmm perceptron structured_model",
     packages=['rungsted'],
     long_description=read('README.md'),
     classifiers=[
-        "Development Status :: 3 - Alpha",
+        "Development Status :: 4 - Beta",
+        "Programming Language :: Python :: 3.4",
+        "License :: OSI Approved :: MIT License",
+        "Topic :: Scientific/Engineering",
+        "Topic :: Scientific/Engineering :: Artificial Intelligence",
+        
+
     ],
     ext_modules=ext_modules,
     include_dirs = [np.get_include(), 'src', '.', 'rungsted']

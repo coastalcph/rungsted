@@ -24,7 +24,7 @@ cdef uint32_t hash_str(string to_hash, int bits):
 
     # Padding
     for i in range(to_hash.size() % 4):
-        to_hash.push_back("\0")
+        to_hash.push_back(bytes(1))
 
     MurmurHash3_x86_32(to_hash.c_str(), to_hash.size(), MURMUR_SEED, &out)
 

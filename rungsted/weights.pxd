@@ -1,5 +1,5 @@
-from input cimport Example
-from feat_map cimport FeatMap
+from rungsted.input cimport Example
+from rungsted.feat_map cimport FeatMap
 
 cdef class WeightVector:
     cdef:
@@ -16,6 +16,10 @@ cdef class WeightVector:
         public double mean
         public double m2
 
+        public double scaling
+        public double decay
+
+
         int ada_grad
         int shape0
 
@@ -27,5 +31,6 @@ cdef class WeightVector:
     cdef double score(self, Example *example, int label, FeatMap feat_map)
     cpdef double variance(self)
     cpdef double stddev(self)
+
     cdef void _update_running_mean(self, double old_val, double new_val)
     cdef void _update_ada_grad(self, int feat_i, double val)

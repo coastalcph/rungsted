@@ -7,7 +7,6 @@
 from libc.stdio cimport *
 import numpy as np
 cimport numpy as cnp
-from operator import mul
 
 cdef extern from "math.h":
     double sqrt(double)
@@ -21,7 +20,9 @@ cdef class WeightVector:
             self.n = dims
             self.dims = (dims,)
         elif isinstance(dims, tuple):
-            self.n = reduce(mul, dims)
+            self.n = 1
+            for dim in dims:
+                self.n *= dim
             self.dims = dims
             self.shape0 = dims[0]
 
