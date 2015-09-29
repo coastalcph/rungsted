@@ -4,6 +4,8 @@ import subprocess
 import platform
 from setuptools import setup, Extension
 import numpy as np
+import sys
+
 
 def read(fname):
     return open(os.path.join(os.path.dirname(__file__), fname)).read()
@@ -34,28 +36,29 @@ ext_modules = []
 
 for cython_files in cython_modules:
     source_files = []
-    module_name = None
+    lead_path, ext = splitext(cython_files[0])
+    module_name = lead_path.replace("/", ".")
+
     for fname in cython_files:
         if fname.endswith("pyx"):
             cython_fname = fname
             fname = fname.replace(".pyx", ".cpp")
-            fname_exists = os.path.exists(fname)
 
-            # Force re-generate
-            # if fname_exists:
-            #     os.remove(fname)
-            #     fname_exists = False
+            # Only generate cpp files from Cython sources
+            # running locally in sdist mode
+            if 'sdist' in sys.argv[1:]:
+                fname_exists = os.path.exists(fname)
 
-            if not fname_exists or (fname_exists and os.path.getmtime(cython_fname) > os.path.getmtime(fname)):
-                if fname_exists:
-                    os.remove(fname)
-                subprocess.check_call("cython -3 --cplus {} --output-file {} -v".format(cython_fname, fname), shell=True)
+                # Force re-generate
+                # if fname_exists:
+                #     os.remove(fname)
+                #     fname_exists = False
 
+                if not fname_exists or (fname_exists and os.path.getmtime(cython_fname) > os.path.getmtime(fname)):
+                    if fname_exists:
+                        os.remove(fname)
 
-            if not module_name:
-                lead_path, ext = splitext(cython_fname)
-                #module_name = lead_path.split("/")[1]
-                module_name = lead_path.replace("/", ".")
+                        subprocess.check_call("cython -3 --cplus {} --output-file {} -v".format(cython_fname, fname), shell=True)
 
 
         source_files.append(fname)
@@ -85,7 +88,8 @@ setup(
         "Topic :: Scientific/Engineering",
         "Topic :: Scientific/Engineering :: Artificial Intelligence",
     ],
-    install_requires=['cython>=0.23.1', 'pandas>=0.16'],
+    install_requires=['pandas>=0.16'],
+    
     ext_modules=ext_modules,
     include_dirs=[np.get_include(), 'src', '.', 'rungsted']
 )

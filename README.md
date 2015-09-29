@@ -28,3 +28,11 @@ Provided you have a working installation of NLTK, you can recreate the Brown dat
 ``python rungsted/datasets/cr_brown_pos_data.py data/brown.train.vw data/brown.test.vw``
 
 There is also a script `rungsted/datasets/conll_to_vw.py` to convert from CONLL-formatted input to Rungsted 
+
+
+### Building and uploading to PyPI
+
+First, run `python setup.py sdist` to generate a source distribution. 
+Then upload the distribution files to PyPI with twine: `twine upload dist/*`.
+
+To develop locally, use `python setup.py develop`. 

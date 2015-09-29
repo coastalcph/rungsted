@@ -1,0 +1,2 @@
+include README.md
+include rungsted/MurmurHash3.h
