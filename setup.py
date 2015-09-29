@@ -65,25 +65,27 @@ for cython_files in cython_modules:
 
 setup(
     name="rungsted",
-    version="0.1",
+    version="1.2.1",
     author="Anders Johannsen",
     author_email="ajohannsen@hum.ku.dk",
-    description=("Rungsted. A very fast HMM-based structured prediction model for sequential labeling tasks. "
-                 "Implements the structured perceptron with lots of extras, such as cost-sensitive updates."),
+    description=("Rungsted. An efficient HMM-based structured prediction model for sequential labeling tasks, with extras. "),
     keywords="hmm perceptron structured_model",
     packages=['rungsted'],
+    entry_points={
+        'console_scripts': [
+            'rungsted = rungsted.labeler:main',
+        ]},
     long_description=read('README.md'),
+    url="https://github.com/coastalcph/rungsted",
+    license="MIT",
     classifiers=[
         "Development Status :: 4 - Beta",
         "Programming Language :: Python :: 3.4",
         "License :: OSI Approved :: MIT License",
         "Topic :: Scientific/Engineering",
         "Topic :: Scientific/Engineering :: Artificial Intelligence",
-        
-
     ],
+    install_requires=['cython>=0.23.1', 'pandas>=0.16'],
     ext_modules=ext_modules,
-    include_dirs = [np.get_include(), 'src', '.', 'rungsted']
+    include_dirs=[np.get_include(), 'src', '.', 'rungsted']
 )
-
-
