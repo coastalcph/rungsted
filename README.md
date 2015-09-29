@@ -1,16 +1,14 @@
 ## Rungsted structed perceptron sequential tagger
 
-### Building 
+### Install
 
-Use
+The software is installable via PyPI, e.g. do 
 
-``python setup.py build_ext --inplace``
+```
+pip install rungsted
+```
 
-Building with the above command happens *in place*, leaving the generated C and C++ files in the source directory for inspection. Changes in dependent modules are unfortunately not picked up by the build system. Whenever you need to start from a clean slate, use the supplied `clean.sh` script to get rid of the generated files. 
 
-The build script requires a recent version of Cython. If you don't have Cython, it can be installed as below: 
-
-``pip install cython``
 
 ### Demo
 
