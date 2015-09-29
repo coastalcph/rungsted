@@ -1,4 +1,7 @@
-## Rungsted structed perceptron sequential tagger
+[![Build Status](https://travis-ci.org/coastalcph/rungsted.svg?branch=master)](https://travis-ci.org/coastalcph/rungsted)
+
+
+## Rungsted structured perceptron sequential tagger
 
 ### Install
 
