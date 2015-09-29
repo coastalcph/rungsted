@@ -6,10 +6,6 @@ from setuptools import setup, Extension
 import numpy as np
 import sys
 
-print("Running as ", sys.argv, file=sys.stderr)
-# exit(1)
-
-
 def read(fname):
     return open(os.path.join(os.path.dirname(__file__), fname)).read()
 
