@@ -49,17 +49,11 @@ for cython_files in cython_modules:
             if 'sdist' in sys.argv[1:]:
                 fname_exists = os.path.exists(fname)
 
-                # Force re-generate
-                # if fname_exists:
-                #     os.remove(fname)
-                #     fname_exists = False
-
                 if not fname_exists or (fname_exists and os.path.getmtime(cython_fname) > os.path.getmtime(fname)):
                     if fname_exists:
                         os.remove(fname)
 
-                        subprocess.check_call("cython -3 --cplus {} --output-file {} -v".format(cython_fname, fname), shell=True)
-
+                    subprocess.check_call("cython -3 --cplus {} --output-file {} -v".format(cython_fname, fname), shell=True)
 
         source_files.append(fname)
 
@@ -89,7 +83,7 @@ setup(
         "Topic :: Scientific/Engineering :: Artificial Intelligence",
     ],
     install_requires=['pandas>=0.16'],
-    
+
     ext_modules=ext_modules,
     include_dirs=[np.get_include(), 'src', '.', 'rungsted']
 )
