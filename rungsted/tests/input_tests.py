@@ -9,6 +9,7 @@ def vw_filename(fname):
     return os.path.join(data_dir, fname)
 
 
+@nottest
 def test_weighted_features():
     feat_map = DictFeatMap()
     seqs, labels = read_vw_seq(vw_filename('weighted.vw'), feat_map)
@@ -23,6 +24,7 @@ def test_weighted_features():
         assert key in lookup
         eq_(lookup[key], val)
 
+@nottest
 def test_cs_weights():
     seqs, labels = read_vw_seq(vw_filename('cs.vw'), DictFeatMap())
     eq_(len(seqs), 1)
@@ -43,6 +45,7 @@ def test_cs_weights():
     eq_(labels[token_b[1][0]], 'B')
     eq_(token_b[1][1], 0.2)
 
+@nottest
 def test_importance_weights():
     seqs, labels = read_vw_seq(vw_filename('importance.vw'), DictFeatMap())
 
@@ -74,7 +77,7 @@ def test_importance_weights():
 
 
 
-
+@nottest
 def test_ignore_ns():
     feat_map = DictFeatMap()
 
