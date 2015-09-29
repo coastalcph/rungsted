@@ -6,6 +6,9 @@ from setuptools import setup, Extension
 import numpy as np
 import sys
 
+print("Running as ", sys.argv, file=sys.stderr)
+# exit(1)
+
 
 def read(fname):
     return open(os.path.join(os.path.dirname(__file__), fname)).read()
@@ -44,16 +47,14 @@ for cython_files in cython_modules:
             cython_fname = fname
             fname = fname.replace(".pyx", ".cpp")
 
-            # Only generate cpp files from Cython sources
-            # running locally in sdist mode
-            if 'sdist' in sys.argv[1:]:
-                fname_exists = os.path.exists(fname)
+            # Execute Cython to generate c++ files if necessary
+            fname_exists = os.path.exists(fname)
 
-                if not fname_exists or (fname_exists and os.path.getmtime(cython_fname) > os.path.getmtime(fname)):
-                    if fname_exists:
-                        os.remove(fname)
+            if not fname_exists or (fname_exists and os.path.getmtime(cython_fname) > os.path.getmtime(fname)):
+                if fname_exists:
+                    os.remove(fname)
 
-                    subprocess.check_call("cython -3 --cplus {} --output-file {} -v".format(cython_fname, fname), shell=True)
+                subprocess.check_call("cython -3 --cplus {} --output-file {} -v".format(cython_fname, fname), shell=True)
 
         source_files.append(fname)
 
