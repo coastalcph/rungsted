@@ -14,7 +14,7 @@ before_install:
 install:
   - pip install .
 script:
-  - nosetests
+  - cd tests; nosetests
 addons:
   apt:
     sources:
