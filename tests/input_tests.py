@@ -9,12 +9,12 @@ def vw_filename(fname):
     return os.path.join(data_dir, fname)
 
 
-@nottest
+
 def test_weighted_features():
     feat_map = DictFeatMap()
     seqs, labels = read_vw_seq(vw_filename('weighted.vw'), feat_map)
 
-    expected = {'1^a': 3, '1^b': -3, '1^c': 2.5, '1^d': 1, '1^e': 1E6}
+    expected = {b'1^a': 3, b'1^b': -3, b'1^c': 2.5, b'1^d': 1, b'1^e': 1E6}
 
     # Map feature ids to names
     index2feat = {idx: feat_name for feat_name, idx in feat_map.feat2index_.items()}
@@ -24,28 +24,26 @@ def test_weighted_features():
         assert key in lookup
         eq_(lookup[key], val)
 
-@nottest
 def test_cs_weights():
     seqs, labels = read_vw_seq(vw_filename('cs.vw'), DictFeatMap())
     eq_(len(seqs), 1)
-    eq_(set(labels), set(['A', 'B', 'C']))
+    eq_(set(labels), set([b'A', b'B', b'C']))
 
     label_costs = seqs[0].label_costs
 
     # First token
     token_a = label_costs[0]
-    eq_(labels[token_a[0][0]], 'C')
+    eq_(labels[token_a[0][0]], b'C')
     eq_(token_a[0][1], 0.5)
 
     # Second token
     token_b = label_costs[1]
-    eq_(labels[token_b[0][0]], 'A')
+    eq_(labels[token_b[0][0]], b'A')
     eq_(token_b[0][1], 0.1)
 
-    eq_(labels[token_b[1][0]], 'B')
+    eq_(labels[token_b[1][0]], b'B')
     eq_(token_b[1][1], 0.2)
 
-@nottest
 def test_importance_weights():
     seqs, labels = read_vw_seq(vw_filename('importance.vw'), DictFeatMap())
 
@@ -77,20 +75,18 @@ def test_importance_weights():
 
 
 
-@nottest
 def test_ignore_ns():
     feat_map = DictFeatMap()
 
     seqs, labels = read_vw_seq(vw_filename('ns.vw'), feat_map)
-    assert '1^a' in feat_map.feat2index_
+    assert b'1^a' in feat_map.feat2index_
 
     feat_map = DictFeatMap()
     seqs, labels = read_vw_seq(vw_filename('ns.vw'), feat_map, ignore=['1'])
-    assert '1^a' not in feat_map.feat2index_
+    assert b'1^a' not in feat_map.feat2index_
 
     # Longer namespaces
     feat_map = DictFeatMap()
     seqs, labels = read_vw_seq(vw_filename('ns.vw'), feat_map, ignore=['3'])
-    assert not any(key.startswith('3xx') for key in feat_map.feat2index_.keys())
-
+    assert not any(key.startswith(b'3xx') for key in feat_map.feat2index_.keys())
 
