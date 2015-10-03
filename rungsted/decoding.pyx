@@ -127,7 +127,7 @@ cdef class Viterbi(object):
                 else:
                     offset = cur_label * (self.n_labels + 2) # Including labels for initial and final states
                     for prev_label in range(self.n_labels):
-                        score = e_score + self.transition.w[offset + prev_label] + self.trellis[word_i-1, prev_label]
+                        score = e_score + self.transition.get(offset + prev_label) + self.trellis[word_i-1, prev_label]
 
                         if score >= min_score:
                             min_score = score

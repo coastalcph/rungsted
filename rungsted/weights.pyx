@@ -11,6 +11,7 @@ cimport numpy as cnp
 cdef extern from "math.h":
     double sqrt(double)
     double log(double)
+    double pow(double, double)
 
 cnp.import_array()
 
@@ -34,9 +35,14 @@ cdef class WeightVector:
 
         self.ada_grad = int(ada_grad)
         self.acc = np.zeros_like(self.w, dtype=np.float64)
+        self.base = np.zeros_like(self.w, dtype=np.float64)
         self.adagrad_squares = np.ones_like(self.w, dtype=np.float64)
         self.last_update = np.zeros_like(self.w, dtype=np.int32)
         self.active = np.ones_like(self.w, dtype=np.float64)
+        self.decay = 1
+        self.inv_decay = 1
+        self.scaling = 1
+        self.inv_scaling = 1
 
     def average(self):
         w_copy = np.asarray(self.w)
@@ -64,7 +70,7 @@ cdef class WeightVector:
         self.adagrad_squares[feat_i] += val*val
 
 
-    cpdef update(self, int feat_i, double val):
+    cdef update(self, int feat_i, double val):
         if feat_i < 0:
             raise ValueError("feature index is < 0")
 
@@ -86,6 +92,7 @@ cdef class WeightVector:
         self.acc[feat_i] += val
         self.w[feat_i] += val
 
+
     cpdef double variance(self):
         return self.m2 / float(self.n)
 
@@ -95,10 +102,10 @@ cdef class WeightVector:
     cpdef update2d(self, int i1, int i2, double val):
         self.update(self.shape0 * i1 + i2, val)
 
-    cdef inline double get(self, int i1):
+    cdef double get(self, int i1):
         return self.w[i1]
 
-    cdef inline double get2d(self, int i1, int i2):
+    cdef double get2d(self, int i1, int i2):
         return self.w[self.shape0 * i1 + i2]
 
 
@@ -136,3 +143,38 @@ cdef class WeightVector:
 
     def copy(self):
         return WeightVector(self.dims, self.ada_grad, np.asarray(self.w).copy())
+
+cdef class ScaledWeightVector(WeightVector):
+    cdef update(self, int feat_i, double val):
+        # cdef double orig_val = val
+        if feat_i < 0:
+            raise ValueError("feature index is < 0")
+
+        val *= self.active[feat_i]
+        val *= self.scaling
+        if val == 0:
+            return
+
+        cdef int missed_updates = self.n_updates - self.last_update[feat_i] - 1
+
+        # Perform missing updates for previous rounds
+        self.last_update[feat_i] = self.n_updates
+
+        # Use exponential sums to calculate the decay rate
+        # We use the fact that
+        #    $\sum_{i=0}^{N-1} r^i = \frac{1-r^N}{1 - r}$
+        cdef double scaling_factor_missing = ((1 - pow(self.decay, missed_updates + 1)) / (1 - self.decay)) - 1
+        self.acc[feat_i] +=  scaling_factor_missing * self.w[feat_i]
+
+        # New update
+        self.acc[feat_i] += val
+        self.w[feat_i] += val
+
+    # Subclasssing prevents inlining
+    cdef double get(self, int i1):
+        return self.base[i1] + self.w[i1] * self.scaling
+
+    cdef double get2d(self, int i1, int i2):
+        cdef int index = self.shape0 * i1 + i2
+        return self.base[index] + self.w[index] * self.scaling
+
