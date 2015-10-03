@@ -114,71 +114,6 @@ cdef class Sequence(object):
             example_free(&e)
 
 
-cpdef uint8_t[::1] count_group_sizes(list sequences):
-    cdef:
-        Sequence seq
-        Example example
-        Feature feat
-        int max_group = -1
-        set group_feature_pairs = set()
-
-    for seq in sequences:
-        for example in seq.examples:
-            for feat in example.features:
-                if feat.group > max_group:
-                    max_group = feat.group
-                group_feature_pairs.add((feat.group, feat.index))
-
-    cdef uint8_t [::1] out = np.zeros(max_group + 1, dtype=np.uint8)
-    cdef int group, index
-    for group, index in group_feature_pairs:
-        out[group] += 1
-
-    return out
-
-cpdef dropout_groups(list sequences, uint8_t[::1] group_sizes):
-    cdef:
-        int total_features = sum(group_sizes)
-        uint8_t [::1] blocked_groups = np.zeros_like(group_sizes)
-
-        long [::1] visit_order
-        int block_count
-        int currently_blocked = 0
-
-    # Block 10 % of features (should be adjustable)
-    block_count = int(total_features * 0.1)
-
-    cdef int i
-    while currently_blocked <= block_count:
-        i = rand() % group_sizes.shape[0]
-        # Already blocked?
-        if blocked_groups[i] == 1:
-            continue
-        if group_sizes[i] > 0:
-            blocked_groups[i] = 1
-            currently_blocked += group_sizes[i]
-
-    block_groups(sequences, blocked_groups)
-
-cpdef int block_groups(list sequences, uint8_t[::1] blocked_groups):
-    cdef:
-        Sequence seq
-        Example *example
-        Feature *feat
-        int n_blocked = 0
-
-    cdef int i, j
-    for seq in sequences:
-        for i in range(seq.examples.size()):
-            example = &(seq.examples[i])
-            for j in range(example.features.size()):
-                feat = &(seq.examples[i].features[j])
-                if blocked_groups[feat.group] == 1:
-                    n_blocked += 1
-                else:
-                    pass
-    return n_blocked
-
 cdef Dataset dataset_new(list quadratic_list, list ignore_list):
     cdef:
         vector[string] quadratic
@@ -347,18 +282,16 @@ cdef struct PartialExample:
     string feat_name
     int feat_begin
     int feat_len
-    string feat_group
     double feat_val
     double ns_mult
 
     vector[string] names
 
 
-cdef void add_feature(Example *example, int feat_i, double value, int group):
+cdef void add_feature(Example *example, int feat_i, double value):
     cdef Feature feat
     feat.index = feat_i
     feat.value = value
-    feat.group = group
     example.features.push_back(feat)
 
 cdef void add_partial(Example *example, PartialExample *partial, int audit):
@@ -367,7 +300,6 @@ cdef void add_partial(Example *example, PartialExample *partial, int audit):
     assert feature_map_global is not None
 
     if not partial.ns_name.empty() and example.dataset.ignore[<int> partial.ns_name[0]]:
-        partial.feat_group.clear()
         return
 
     cdef int ns_name_len = partial.ns_name.size()
@@ -382,10 +314,6 @@ cdef void add_partial(Example *example, PartialExample *partial, int audit):
 
         feat.index = feat_i
         feat.value = partial.ns_mult * partial.feat_val
-        # if not partial.feat_group.empty():
-        #     feat.group = hash_str(partial.feat_group, 22)
-        # else:
-        #     feat.group = hash_str(partial.feat_name, 22)
 
         example.features.push_back(feat)
 
@@ -393,9 +321,6 @@ cdef void add_partial(Example *example, PartialExample *partial, int audit):
             print("{}:{}=>{}".format(partial.ns_name, feat.value, feat.index), end=' ')
 
     partial.ns_name.resize(ns_name_len)
-
-
-    partial.feat_group.clear()
 
 
 cdef int parse_features2(Example * e, int audit, PartialExample *partial) except -1:
@@ -545,7 +470,7 @@ def read_vw_seq(filename, FeatMap feat_map, quadratic=[], ignore=[], labels=None
             parse_features2(&e, audit, &partial)
 
             # Add constant feature
-            add_feature(&e, feat_map.feat_i(b"^Constant"), 1, -1)
+            add_feature(&e, feat_map.feat_i(b"^Constant"), 1)
 
             seq.examples.push_back(e)
 

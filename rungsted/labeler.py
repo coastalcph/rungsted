@@ -26,7 +26,7 @@ from rungsted.corruption import FastBinomialCorruption, RecycledDistributionCorr
     AdversialCorruption
 from rungsted.feat_map import HashingFeatMap, DictFeatMap
 
-from rungsted.input import read_vw_seq, count_group_sizes, dropout_groups
+from rungsted.input import read_vw_seq
 from rungsted.timer import Timer
 from rungsted.struct_perceptron import avg_loss, accuracy, update_weights, update_weights_confusion, update_weights_cs_sample
 from rungsted.weights import WeightVector
