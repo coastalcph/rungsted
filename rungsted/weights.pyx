@@ -232,7 +232,6 @@ cdef class ScaledWeightVector(WeightVector):
         cdef double scaling_factor_missing
         cdef int missed_updates
 
-        print("Using backward scaling factor of", backward_scaling_factor)
         for i in range(len(self.w)):
             missed_updates = self.n_updates - self.last_update[i] - 1
             scaling_factor_missing = ((1 - pow(backward_scaling_factor, missed_updates + 2)) / (1 - backward_scaling_factor)) - 1
@@ -250,6 +249,10 @@ cdef class ScaledWeightVector(WeightVector):
             feat_i = feat_map.feat_i_for_label(feat.index, label)
             e_score += self.base[feat_i] + self.w[feat_i] * self.scaling * feat.value *  self.active[feat_i]
         return e_score
+
+    def save(self, file):
+        self.w = np.asarray(self.base) + np.array(self.w)
+        super().save(file)
 
     @classmethod
     def load(cls, file, **kwargs):
