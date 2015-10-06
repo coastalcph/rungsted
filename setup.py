@@ -59,7 +59,7 @@ for cython_files in cython_modules:
 
 setup(
     name="rungsted",
-    version="1.2.1",
+    version="1.2.2",
     author="Anders Johannsen",
     author_email="ajohannsen@hum.ku.dk",
     description=("Rungsted. An efficient HMM-based structured prediction model for sequential labeling tasks, with extras. "),
