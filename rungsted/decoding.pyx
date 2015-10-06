@@ -111,7 +111,7 @@ cdef class Viterbi(object):
                 if self.trellis[word_i, cur_label] == -INFINITY:
                     continue
 
-                min_score = -1E9
+                min_score = -1E10
                 min_prev = -1
 
                 # Emission score

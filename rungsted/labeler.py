@@ -29,7 +29,12 @@ from rungsted.feat_map import HashingFeatMap, DictFeatMap
 from rungsted.input import read_vw_seq
 from rungsted.timer import Timer
 from rungsted.struct_perceptron import avg_loss, accuracy, update_weights, update_weights_confusion, update_weights_cs_sample
-from rungsted.weights import WeightVector
+
+import rungsted
+from rungsted import weights
+from rungsted.weights import WeightVector, ScaledWeightVector
+
+
 
 
 def main():
@@ -49,8 +54,10 @@ def main():
     parser.add_argument('--no-ada-grad', help="Do not use adaptive gradient scaling.",
                         action='store_false', dest='ada_grad', default=True)
     parser.add_argument('--initial-model', '-i', help="Initial model from this file.")
+    parser.add_argument('--base-weights', help="Use initial model as base weights.", action='store_true')
     parser.add_argument('--final-model', '-f', help="Save model here after training.")
     parser.add_argument('--cost-sensitive', '--cs', help="Cost-sensitive weight updates", action='store_true')
+    parser.add_argument('--l2-decay', help="Shrink weights by this factor after each update.", type=float)
     parser.add_argument('--append-test', help="Append test result as JSON object to this file.")
     parser.add_argument('--audit', help="Print the interpretation of the input files to standard out. "
                                         "Useful for debugging. ", action='store_true')
@@ -82,19 +89,30 @@ def main():
     if args.cost_sensitive:
         weight_updater = update_weights_cs_sample
 
-
-
     if args.labels:
         labels = [line.strip() for line in open(args.labels)]
     else:
         labels = None
 
+    if args.l2_decay:
+        WV = ScaledWeightVector
+    else:
+        WV = WeightVector
+
     if args.initial_model:
-        wt = WeightVector.load(join(args.initial_model, 'transition.npz'))
-        we = WeightVector.load(join(args.initial_model, 'emission.npz'))
+        wt = WV.load(join(args.initial_model, 'transition.npz'), l2_decay=args.l2_decay)
+        we = WV.load(join(args.initial_model, 'emission.npz'), l2_decay=args.l2_decay)
+
         labels = list(np.load(join(args.initial_model, 'labels.npy')))
         if not args.hash_bits:
-            feat_map.feat2index_ = pickle.load(open(join(args.initial_model, 'feature_map.pickle')))
+            pickle_filename = join(args.initial_model, 'feature_map.pickle')
+            feat_map.feat2index_ = pickle.load(open(pickle_filename, 'rb'))
+
+        if args.base_weights:
+            wt.base = wt.w
+            wt.w = np.zeros_like(wt.w)
+            we.base = we.w
+            we.w = np.zeros_like(we.w)
 
     train = None
     if args.train:
@@ -124,8 +142,10 @@ def main():
 
     # Loading weights
     if not args.initial_model:
-        wt = WeightVector((n_labels + 2, n_labels + 2), ada_grad=args.ada_grad)
-        we = WeightVector(feat_map.n_feats(), ada_grad=args.ada_grad)
+        wt = WV((n_labels + 2, n_labels + 2),
+                          ada_grad=args.ada_grad, l2_decay=args.l2_decay)
+        we = WV(feat_map.n_feats(),
+                          ada_grad=args.ada_grad, l2_decay=args.l2_decay)
 
     logging.info("Weight vector sizes. Transition={}. Emission={}".format(wt.dims, we.dims))
 
@@ -146,10 +166,6 @@ def main():
         # corrupter = RecycledDistributionCorruption(inverse_zipfian_sampler, feat_map, n_labels)
         # corrupter = AdversialCorruption(0.1, feat_map, n_labels)
 
-    else:
-        group_sizes = None
-    n_updates = 0
-
     # Only one decoder supported at the moment
     Viterbi = ViterbiStd
 
@@ -167,17 +183,25 @@ def main():
                     weight_updater(sent, transition, emission, 0.1, n_labels, feat_map, confusion_scaling)
                 else:
                     weight_updater(sent, transition, emission, 0.1, n_labels, feat_map)
+
                 n_updates += 1
-                transition.n_updates = n_updates
-                emission.n_updates = n_updates
+                transition.update_done()
+                emission.update_done()
+                # print("Scaling", emission.scaling)
 
                 if n_updates % 1000 == 0:
                     print('\r[{}] {}k sentences total'.format(epoch, n_updates / 1000), file=sys.stderr)
+
 
             epoch_msg = "[{}] train loss={:.4f} ".format(epoch, avg_loss(train))
             print("\r{}{}".format(epoch_msg, " "*72), file=sys.stderr)
 
         timers['train'].end()
+
+        # Rescale
+        transition.rescale()
+        emission.rescale()
+
         if args.average:
             transition.average()
             emission.average()
@@ -252,11 +276,8 @@ def main():
         json.dump(args.__dict__, open(join(args.final_model, 'settings.json'), 'w'))
 
         if not args.hash_bits:
-            pickle.dump(feat_map.feat2index_,
-                         open(join(args.final_model, 'feature_map.pickle'), 'w'), protocol=2)
+            with open(join(args.final_model, 'feature_map.pickle'), 'wb') as out:
+                pickle.dump(feat_map.feat2index_, out)
 
 if __name__ == '__main__':
     main()
-
-
-

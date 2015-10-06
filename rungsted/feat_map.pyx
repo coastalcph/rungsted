@@ -133,8 +133,8 @@ cdef class HashingFeatMap(FeatMap):
 
 
 cdef class DictFeatMap(FeatMap):
-    property feat2index_:
 
+    property feat2index_:
         def __get__(self):
             return self.feat2index
 

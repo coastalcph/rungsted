@@ -60,6 +60,10 @@ def update_weights(Sequence sent, WeightVector transition, WeightVector emission
     cdef int pred_label, gold_label
     cdef Feature feat
 
+    cdef int32_t gold_feat_index = 0
+    cdef int32_t pred_feat_index = 0
+
+
     # Update emission features
     for word_i in range(len(sent)):
         cur = sent.examples.at(word_i)
@@ -69,7 +73,10 @@ def update_weights(Sequence sent, WeightVector transition, WeightVector emission
         # Update if prediction is not correct
         if gold_label != pred_label:
             for feat in cur.features:
-                new_feat_i = feat_map.feat_i_for_label(feat.index, gold_label)
+                gold_feat_index = feat_map.feat_i_for_label(feat.index, gold_label)
+                pred_feat_index = feat_map.feat_i_for_label(feat.index, pred_label)
+                if gold_feat_index < 0 or pred_feat_index < 0:
+                    print(feat.index, gold_label, pred_label, gold_feat_index, pred_feat_index)
 
                 emission.update(feat_map.feat_i_for_label(feat.index, gold_label),
                            feat.value * alpha * cur.importance)
