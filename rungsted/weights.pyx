@@ -5,7 +5,7 @@
 #cython: cdivision=True
 
 from libc.stdio cimport *
-from libc.math cimport isnan, isnormal
+from libc.math cimport isnan
 import numpy as np
 cimport numpy as cnp
 
@@ -13,6 +13,10 @@ cdef extern from "math.h":
     double sqrt(double)
     double log(double)
     double pow(double, double)
+
+cdef extern from "<cmath>" namespace "std":
+    int isnormal(double)
+
 
 cnp.import_array()
 

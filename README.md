@@ -33,7 +33,7 @@ There is also a script `rungsted/datasets/conll_to_vw.py` to convert from CONLL-
 
 ### Building and uploading to PyPI
 
-First, run `python setup.py sdist` to generate a source distribution. 
+First, run `CYTHON=1 python setup.py sdist` to generate a source distribution. 
 Then upload the distribution files to PyPI with twine: `twine upload dist/*`.
 
-To develop locally, use `python setup.py develop`. 
+To develop locally, use `CYTHON=1 python setup.py develop`. 

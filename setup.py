@@ -6,6 +6,7 @@ from setuptools import setup, Extension
 import numpy as np
 import sys
 
+
 def read(fname):
     return open(os.path.join(os.path.dirname(__file__), fname)).read()
 
@@ -33,6 +34,8 @@ includes = [os.path.join(pwd, 'rungsted'),
 
 ext_modules = []
 
+recreate_cython = os.environ.get('CYTHON') == '1'
+
 for cython_files in cython_modules:
     source_files = []
     lead_path, ext = splitext(cython_files[0])
@@ -41,25 +44,31 @@ for cython_files in cython_modules:
     for fname in cython_files:
         if fname.endswith("pyx"):
             cython_fname = fname
-            fname = fname.replace(".pyx", ".cpp")
+            cpp_fname = fname.replace(".pyx", ".cpp")
 
             # Execute Cython to generate c++ files if necessary
-            fname_exists = os.path.exists(fname)
+            cpp_file_exists = os.path.exists(cpp_fname)
+            cython_file_exists = os.path.exists(cython_fname)
 
-            if not fname_exists or (fname_exists and os.path.getmtime(cython_fname) > os.path.getmtime(fname)):
-                if fname_exists:
-                    os.remove(fname)
+            cpp_older_than_cython = cpp_file_exists and cython_file_exists \
+                                    and os.path.getmtime(cython_fname) > os.path.getmtime(cpp_fname)
 
-                subprocess.check_call("cython -3 --cplus {} --output-file {} -v".format(cython_fname, fname), shell=True)
+            if recreate_cython and (not cpp_file_exists or cpp_older_than_cython):
+                if cpp_file_exists:
+                    os.remove(cpp_fname)
 
-        source_files.append(fname)
+                subprocess.check_call("cython -3 --cplus {} --output-file {} -v".format(cython_fname, cpp_fname), shell=True)
+
+            source_files.append(cpp_fname)
+        else:
+            source_files.append(fname)
 
     ext_modules.append(Extension(module_name, sources=source_files, include_dirs=includes,
                        extra_compile_args=extra_compile_args, language='c++'))
 
 setup(
     name="rungsted",
-    version="1.2.3",
+    version="1.2.4",
     author="Anders Johannsen",
     author_email="ajohannsen@hum.ku.dk",
     description=("Rungsted. An efficient HMM-based structured prediction model for sequential labeling tasks, with extras. "),
