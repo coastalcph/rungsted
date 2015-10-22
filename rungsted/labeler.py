@@ -221,7 +221,7 @@ def main():
                     print("", file=out)
                 vit.decode(sent)
                 for example_id, gold_label, pred_label in zip(sent.ids, sent.gold_labels, sent.pred_labels):
-                    print("{}\t{}\t{}".format(example_id, labels_map[gold_label], labels_map[pred_label]), file=out)
+                    print("{}\t{}\t{}".format(example_id, labels_map.get(gold_label, 'UNKNOWN'), labels_map[pred_label]), file=out)
 
 
         timers['test'].end()
