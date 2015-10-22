@@ -6,7 +6,7 @@ python:
   - "3.3"
   - "3.4"
 env:
-  - CXX="g++-4.9" CC="gcc-4.9"
+  - CXX="g++-4.9" CC="gcc-4.9" CYTHON=1
 before_install:
   - pip install --upgrade pip
   - pip install cython
