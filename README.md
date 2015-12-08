@@ -11,13 +11,13 @@ The software is installable via PyPI, e.g. do
 pip install rungsted
 ```
 
-
+At the moment, Rungsted only works on Python 3. 
 
 ### Demo
 
 The repository contains a subset of the part-of-speech tagged Brown corpus. To run the structured perceptron labeler on this dataset, execute:
 
-``python src/labeler.py --train data/brown.train --test data/brown.test.vw``
+``rungsted --train data/brown.train --test data/brown.test.vw``
 
 Rungsted's input format is closely modeled on the powerful and flexible format of [Vowpal Wabbit](https://github.com/JohnLangford/vowpal_wabbit/wiki/Input-format),
 with the exception that Rungsted is perfectly fine with labels that are not integers.
